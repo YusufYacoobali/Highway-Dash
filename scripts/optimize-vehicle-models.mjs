@@ -44,7 +44,12 @@ for (const file of files) {
 async function buildExactTexturePassThrough(document, output) {
   const root = document.getRoot();
   const beforeTriangles = countTriangles(document);
+  const beforeUvPrimitives = countTextureCoordinatePrimitives(document);
   const materials = root.listMaterials();
+
+  if (beforeUvPrimitives === 0) {
+    throw new Error(`[vehicle-exact] ${path.basename(output)} source has no TEXCOORD_0 attributes`);
+  }
 
   // Remove stale extracted textures before recreating the exact current set.
   for (const name of await fs.readdir(OUTPUT_DIR)) {
@@ -81,15 +86,23 @@ async function buildExactTexturePassThrough(document, output) {
     }
   }
 
-  // Only prune now-unreferenced embedded image resources. No geometry/material
-  // replacement, flattening, joining, welding, decimation or vertex-colour bake.
-  await document.transform(prune());
+  // Prune now-unreferenced embedded image resources, but keep vertex attributes.
+  // TEXCOORD_0 is still required at runtime when the extracted maps are reattached.
+  await document.transform(prune({ keepAttributes: true }));
+
+  const afterUvPrimitives = countTextureCoordinatePrimitives(document);
+  if (afterUvPrimitives !== beforeUvPrimitives) {
+    throw new Error(
+      `[vehicle-exact] UV preservation failed: TEXCOORD_0 primitives ${beforeUvPrimitives} -> ${afterUvPrimitives}`,
+    );
+  }
+
   await io.write(output, document);
 
   const afterTriangles = countTriangles(document);
   const stat = await fs.stat(output);
   console.log(
-    `[vehicle-exact] ${path.basename(output)}: ${beforeTriangles.toLocaleString()} -> ${afterTriangles.toLocaleString()} tris, ${(stat.size / 1024).toFixed(0)} KB, extracted=${JSON.stringify(extracted)}`,
+    `[vehicle-exact] ${path.basename(output)}: ${beforeTriangles.toLocaleString()} -> ${afterTriangles.toLocaleString()} tris, ${(stat.size / 1024).toFixed(0)} KB, uvPrimitives=${afterUvPrimitives}, extracted=${JSON.stringify(extracted)}`,
   );
 }
 
@@ -225,6 +238,16 @@ function sampleImage(image, u, v) {
 
 function srgbToLinear(value) {
   return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+}
+
+function countTextureCoordinatePrimitives(document) {
+  let count = 0;
+  for (const mesh of document.getRoot().listMeshes()) {
+    for (const primitive of mesh.listPrimitives()) {
+      if (primitive.getAttribute('TEXCOORD_0')) count += 1;
+    }
+  }
+  return count;
 }
 
 function countTriangles(document) {
