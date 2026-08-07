@@ -21,11 +21,7 @@ const EARLY_EVENTS: readonly RunEventId[] = ['coinRush', 'construction', 'tunnel
 const LATE_EVENTS: readonly RunEventId[] = ['police', 'roadblock', 'coinRush', 'construction', 'nitroRush', 'tunnel'];
 const WORLD_THEMES: readonly WorldThemeId[] = ['forest', 'night', 'coast', 'storm'];
 
-/**
- * Builds a fresh run story every reset. Difficulty still has a safe authored
- * shape, but event order, durations and environment route are different enough
- * that players cannot memorise the first two minutes.
- */
+/** Fresh event deck, durations, variants and world route are rolled every run. */
 export class RunDirectorSystem implements GameSystem {
   readonly name = 'runDirector';
 
@@ -66,6 +62,7 @@ export class RunDirectorSystem implements GameSystem {
 
     const firstBeat = this.openingBeats[0] ?? { event: 'cruise' as const, seconds: 12 };
     state.event = firstBeat.event;
+    state.eventVariant = Math.floor(Math.random() * 4);
     state.eventRemaining = state.mode === 'run' ? firstBeat.seconds : 9999;
     state.eventSerial = 0;
     state.theme = 'sunset';
@@ -101,6 +98,7 @@ export class RunDirectorSystem implements GameSystem {
 
   private start(state: SystemContext['state'], event: RunEventId, seconds: number): void {
     state.event = event;
+    state.eventVariant = Math.floor(Math.random() * 4);
     state.eventRemaining = seconds;
     state.eventSerial += 1;
     if (event !== 'cruise') this.lastSpectacle = event;
@@ -138,9 +136,7 @@ function buildOpeningBeats(): Beat[] {
 
   let previous: RunEventId = early[early.length - 1] ?? 'cruise';
   for (let event of late) {
-    if (event === previous) {
-      event = event === 'coinRush' ? 'construction' : 'coinRush';
-    }
+    if (event === previous) event = event === 'coinRush' ? 'construction' : 'coinRush';
     beats.push({ event, seconds: durationForEvent(event, true) });
     beats.push({ event: 'cruise', seconds: randomRange(5.5, 8.5) });
     previous = event;
