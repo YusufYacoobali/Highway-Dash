@@ -29,19 +29,24 @@ export const TRAFFIC = {
   minSpeed: 11,
   maxSpeed: 18,
   /** Longitudinal half-length of the player's collision box. */
-  playerHalfLength: 3.2,
-  /** Seconds between spawns at rest; shrinks as the run speeds up. */
-  baseInterval: 1.15,
-  minInterval: 0.42,
-  /**
-   * The attract loop runs far sparser than gameplay. Menu traffic never
-   * despawns early, so a gameplay cadence would leave forty cars on screen
-   * behind the title — the most expensive frame in the whole app.
-   */
-  attractInterval: 0.95,
-  /** After this many seconds, occasionally spawn a second car in the same beat. */
-  doubleSpawnAfter: 22,
-  doubleSpawnChance: 0.16,
+  playerHalfLength: 3.05,
+  /** Fair hitboxes are slightly inset from the visible body. */
+  collisionWidthScale: 0.84,
+  truckCollisionWidthScale: 0.76,
+  /** Visual lane wander; wide trucks stay almost perfectly centred. */
+  laneJitter: 0.16,
+  truckLaneJitter: 0.04,
+  /** Start relaxed, then ramp traffic density over roughly a two-minute run. */
+  baseInterval: 2.3,
+  minInterval: 0.82,
+  difficultyRampSeconds: 115,
+  /** Menu traffic stays sparse and decorative. */
+  attractInterval: 1.35,
+  /** Multi-car beats are a late-run difficulty spike, not an opening hazard. */
+  doubleSpawnAfter: 80,
+  doubleSpawnChance: 0.07,
+  runPrefillCount: 4,
+  attractPrefillCount: 7,
 } as const;
 
 export const PICKUPS = {
@@ -81,7 +86,7 @@ export const NITRO = {
 
 export const CRASH = {
   /** Seconds of slow-motion tumble before the summary is reported. */
-  reportDelay: 1.25,
+  reportDelay: 1.55,
   spinMin: 3.4,
   spinMax: 5.6,
   liftMin: 7,
