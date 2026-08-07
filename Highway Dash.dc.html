@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Luckiest+Guy&display=swap" rel="stylesheet">
+<script type="module">import * as T from 'https://esm.sh/three@0.160.0'; window.THREE = T;</script>
+<style>
+body{margin:0;background:#0B1A33;font-family:'Baloo 2',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#FFC42E;text-decoration:none}a:hover{color:#46C82B}
+@keyframes hdPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+@keyframes hdPop{0%{transform:translate(-50%,0) scale(.5);opacity:0}20%{transform:translate(-50%,-12px) scale(1.15);opacity:1}72%{opacity:1}100%{transform:translate(-50%,-72px) scale(.95);opacity:0}}
+@keyframes hdShine{0%{transform:translateX(-140%) skewX(-18deg)}100%{transform:translateX(360%) skewX(-18deg)}}
+@keyframes hdFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;padding:36px 40px 60px;display:flex;flex-direction:column;gap:26px;align-items:center;background:radial-gradient(1100px 640px at 50% -8%,#1B3A6B 0%,#0F2447 55%,#08152B 100%)">
+
+  <div style="width:1160px;max-width:100%;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+    <div style="font-family:'Luckiest Guy',cursive;font-size:50px;line-height:.95;color:#FFF;text-shadow:0 5px 0 #123566,0 0 44px rgba(95,184,245,.4)">HIGHWAY DASH</div>
+    <div style="font-size:15.5px;font-weight:700;color:#7FA6DB;padding-bottom:9px">low-poly traffic runner · playable 3D prototype + meta screens</div>
+  </div>
+
+  <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap;justify-content:center">
+
+    <div style="width:194px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:.14em;color:#5C7CAE;padding-left:4px">JUMP TO SCREEN</div>
+      <sc-for list="{{ navList }}" as="nav" hint-placeholder-count="7">
+        <div onClick="{{ nav.go }}" style="{{ nav.style }}" style-hover="filter:brightness(1.14)">
+          <span style="font-size:15px;font-weight:800;letter-spacing:.02em">{{ nav.label }}</span>
+          <span style="font-size:11.5px;font-weight:600;opacity:.72">{{ nav.note }}</span>
+        </div>
+      </sc-for>
+      <div style="margin-top:10px;padding:12px 14px;background:rgba(255,255,255,.05);border:2px dashed rgba(255,255,255,.14);border-radius:14px;font-size:12.5px;font-weight:600;color:#7FA6DB;line-height:1.45">Drag anywhere on the road to steer. Space or the ⚡ button for nitro. Arrow keys work too.</div>
+    </div>
+
+    <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+      <div style="position:absolute;inset:0;overflow:hidden;background:#0E1A2B;font-family:'Baloo 2',system-ui,sans-serif;user-select:none;-webkit-user-select:none">
+
+        <div style="{{ sceneStyle }}">
+          <x-import component-from-global-scope="hd-scene" from="./highway3d.js" mode="{{ sceneMode }}" ramp="{{ rampStr }}" hint-size="100%,100%"></x-import>
+        </div>
+
+        <div data-hd-bridge="hdcrash" onClick="{{ onCrash }}" style="display:none"></div>
+        <div data-hd-bridge="hdnear" onClick="{{ onNear }}" style="display:none"></div>
+
+        <sc-if value="{{ isMenu }}" hint-placeholder-val="{{ true }}">
+          <div style="position:absolute;inset:0;pointer-events:none;background:linear-gradient(rgba(10,32,66,.34) 0%,rgba(10,32,66,0) 26%,rgba(6,20,40,0) 52%,rgba(6,20,40,.62) 100%)"></div>
+
+          <div style="position:absolute;top:58px;left:0;right:0;display:flex;justify-content:center;gap:14px">
+            <div style="display:flex;align-items:center;gap:9px;background:#16294A;border:3px solid rgba(255,255,255,.22);border-radius:999px;padding:6px 20px 6px 7px;box-shadow:0 4px 0 rgba(6,18,38,.55)">
+              <div style="width:27px;height:27px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFE9A0,#F2A800);border:3px solid #B87800"></div>
+              <span style="font-size:19px;font-weight:800;color:#fff">{{ coins }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;background:#16294A;border:3px solid rgba(255,255,255,.22);border-radius:999px;padding:6px 20px 6px 7px;box-shadow:0 4px 0 rgba(6,18,38,.55)">
+              <div style="width:27px;height:27px;background:linear-gradient(#FFE07A,#F5A800);clip-path:polygon(50% 0,63% 36%,100% 38%,70% 61%,80% 100%,50% 76%,20% 100%,30% 61%,0 38%,37% 36%)"></div>
+              <span style="font-size:19px;font-weight:800;color:#fff">{{ gems }}</span>
+            </div>
+          </div>
+
+          <div style="position:absolute;top:118px;left:0;right:0;text-align:center">
+            <div style="font-family:'Luckiest Guy',cursive;font-size:66px;line-height:.86;letter-spacing:.01em;color:#FFF;text-shadow:0 7px 0 #16386B,0 9px 0 #16386B,0 12px 22px rgba(6,20,40,.5)">HIGHWAY</div>
+            <div style="font-family:'Luckiest Guy',cursive;font-size:76px;line-height:.9;letter-spacing:.01em;color:#FFC42E;text-shadow:0 7px 0 #B4550A,0 9px 0 #B4550A,0 13px 24px rgba(6,20,40,.5);margin-top:2px">DASH</div>
+            <div style="font-size:14px;font-weight:800;letter-spacing:.2em;color:rgba(255,255,255,.92);margin-top:10px;text-shadow:0 2px 6px rgba(6,20,40,.6)">ENDLESS TRAFFIC RUNNER</div>
+          </div>
+
+          <div onClick="{{ startRun }}" style="position:absolute;bottom:188px;left:26px;right:26px;height:92px;border-radius:26px;background:linear-gradient(#6BE04A,#33A81C);border:4px solid #1E7A0F;box-shadow:0 9px 0 #17610B,0 20px 34px rgba(20,80,10,.45);cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;animation:hdPulse 2.6s ease-in-out infinite" style-active="transform:translateY(5px);box-shadow:0 4px 0 #17610B">
+            <div style="position:absolute;top:0;bottom:0;width:56px;background:rgba(255,255,255,.4);animation:hdShine 3.2s linear infinite"></div>
+            <span style="font-family:'Luckiest Guy',cursive;font-size:44px;color:#fff;text-shadow:0 4px 0 rgba(20,70,10,.55)">PLAY</span>
+          </div>
+
+          <div style="position:absolute;bottom:118px;left:26px;right:26px;display:flex;gap:11px">
+            <div onClick="{{ goGarage }}" style="flex:1;height:58px;border-radius:20px;background:rgba(11,26,51,.55);border:3px solid rgba(255,255,255,.45);display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;backdrop-filter:blur(3px)" style-hover="background:rgba(11,26,51,.78)">
+              <div style="width:24px;height:20px;border-radius:4px 4px 0 0;border:3px solid #fff;border-bottom:none"></div>
+              <span style="font-size:19px;font-weight:800;letter-spacing:.06em;color:#fff">GARAGE</span>
+            </div>
+            <div onClick="{{ goSeason }}" style="width:88px;height:58px;border-radius:20px;background:rgba(11,26,51,.55);border:3px solid rgba(255,255,255,.45);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(11,26,51,.78)">
+              <span style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#FFC42E">SEASON</span>
+              <span style="font-size:17px;font-weight:800;color:#fff;line-height:1">TIER {{ level }}</span>
+            </div>
+          </div>
+
+          <div style="position:absolute;bottom:76px;left:0;right:0;text-align:center;font-size:13.5px;font-weight:700;color:rgba(255,255,255,.82);text-shadow:0 2px 6px rgba(6,20,40,.7)">Drag anywhere to steer · tap ⚡ for nitro</div>
+        </sc-if>
+
+        <sc-if value="{{ isRun }}" hint-placeholder-val="{{ false }}">
+          <div data-hd-hud onClick="{{ onHud }}" style="display:none"></div>
+          <div style="position:absolute;top:0;left:0;right:0;height:190px;pointer-events:none;background:linear-gradient(rgba(8,24,48,.5),rgba(8,24,48,0))"></div>
+
+          <div style="position:absolute;top:56px;left:16px;right:16px;display:flex;align-items:flex-start;justify-content:space-between;pointer-events:none">
+            <div>
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span data-hd-num="speed" style="font-family:'Luckiest Guy',cursive;font-size:46px;line-height:.9;color:#fff;text-shadow:0 4px 0 #123566,0 6px 14px rgba(6,20,40,.55)">90</span>
+                <span style="font-size:14px;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.9)">KM/H</span>
+              </div>
+              <div style="display:flex;gap:7px;margin-top:7px">
+                <div style="display:flex;align-items:center;gap:6px;background:#16294A;border:2.5px solid rgba(255,255,255,.25);border-radius:999px;padding:4px 12px 4px 5px">
+                  <div style="width:19px;height:19px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFE9A0,#F2A800);border:2px solid #B87800"></div>
+                  <span data-hd-num="coins" style="font-size:14.5px;font-weight:800;color:#fff">0</span>
+                </div>
+                <div style="background:#16294A;border:2.5px solid rgba(255,255,255,.25);border-radius:999px;padding:4px 12px">
+                  <span data-hd-num="dist" style="font-size:14.5px;font-weight:800;color:#fff">0 M</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px">
+              <div style="font-size:10.5px;font-weight:800;letter-spacing:.16em;color:rgba(255,255,255,.85)">WANTED</div>
+              <div style="display:flex;gap:5px">
+                <div data-hd-star="0" style="width:22px;height:22px"></div>
+                <div data-hd-star="1" style="width:22px;height:22px"></div>
+                <div data-hd-star="2" style="width:22px;height:22px"></div>
+                <div data-hd-star="3" style="width:22px;height:22px"></div>
+                <div data-hd-star="4" style="width:22px;height:22px"></div>
+              </div>
+              <div data-hd-num="heat" style="font-size:12.5px;font-weight:800;letter-spacing:.06em;color:rgba(255,255,255,.8)">CRUISING</div>
+            </div>
+          </div>
+
+          <div onClick="{{ goHome }}" style="position:absolute;top:56px;left:50%;transform:translateX(-50%);width:40px;height:40px;border-radius:13px;background:rgba(11,26,51,.7);border:3px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer">
+            <div style="width:5px;height:15px;background:#fff;border-radius:2px"></div>
+            <div style="width:5px;height:15px;background:#fff;border-radius:2px"></div>
+          </div>
+
+          <div data-hd-num="combo" style="position:absolute;top:176px;left:0;right:0;text-align:center;pointer-events:none;opacity:0;font-family:'Luckiest Guy',cursive;font-size:30px;color:#FFC42E;text-shadow:0 4px 0 #B4550A,0 6px 14px rgba(6,20,40,.5)">COMBO x2</div>
+
+          <sc-for list="{{ pops }}" as="p" hint-placeholder-count="0">
+            <div style="{{ p.style }}">{{ p.text }}</div>
+          </sc-for>
+
+          <div onClick="{{ fireNitro }}" style="position:absolute;bottom:48px;right:20px;width:78px;height:78px;border-radius:50%;background:linear-gradient(#8FE7FF,#1FA5E0);border:4px solid #0B6E9E;box-shadow:0 7px 0 #075681;display:flex;align-items:center;justify-content:center;cursor:pointer" style-active="transform:translateY(5px);box-shadow:0 2px 0 #075681">
+            <div style="width:22px;height:38px;background:#fff;clip-path:polygon(58% 0,10% 56%,44% 56%,34% 100%,90% 40%,52% 40%);filter:drop-shadow(0 2px 0 rgba(7,86,129,.5))"></div>
+          </div>
+
+          <div data-hd-hint style="position:absolute;bottom:64px;left:0;right:0;text-align:center;pointer-events:none;transition:opacity .35s linear">
+            <div style="display:inline-block;background:rgba(11,26,51,.82);border:3px solid rgba(255,255,255,.45);border-radius:20px;padding:11px 22px">
+              <div style="font-family:'Luckiest Guy',cursive;font-size:20px;color:#fff">DRAG TO STEER</div>
+              <div style="font-size:12px;font-weight:800;letter-spacing:.1em;color:#FFC42E">ANYWHERE ON THE ROAD</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isCrash }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:linear-gradient(rgba(8,22,45,.55),rgba(8,22,45,.88));padding:74px 18px 34px;box-sizing:border-box;display:flex;flex-direction:column">
+            <div style="text-align:center">
+              <div style="font-family:'Luckiest Guy',cursive;font-size:54px;line-height:.95;color:{{ crashColor }};text-shadow:0 6px 0 rgba(8,22,45,.85),0 10px 22px rgba(0,0,0,.5)">{{ crashTitle }}</div>
+              <div style="font-size:13.5px;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.78);margin-top:4px">{{ crashSub }}</div>
+            </div>
+
+            <div style="margin-top:18px;background:#fff;border-radius:26px;box-shadow:0 10px 0 rgba(8,22,45,.35);padding:17px 17px 15px">
+              <div style="display:flex;align-items:flex-end;justify-content:space-between;padding-bottom:13px;border-bottom:3px dashed rgba(20,33,61,.15)">
+                <div>
+                  <div style="font-size:11.5px;font-weight:800;letter-spacing:.14em;color:rgba(20,33,61,.5)">DISTANCE</div>
+                  <div style="font-family:'Luckiest Guy',cursive;font-size:40px;line-height:1;color:#14213D;white-space:nowrap">{{ lastDist }}<span style="font-size:20px">M</span></div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:11.5px;font-weight:800;letter-spacing:.14em;color:rgba(20,33,61,.5)">BEST</div>
+                  <div style="font-family:'Luckiest Guy',cursive;font-size:23px;line-height:1.3;color:#F59A00;white-space:nowrap">{{ bestLabel }}</div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;padding-top:13px">
+                <sc-for list="{{ lastStats }}" as="s" hint-placeholder-count="4">
+                  <div style="background:#EEF3FA;border-radius:15px;padding:9px 12px">
+                    <div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:rgba(20,33,61,.5)">{{ s.label }}</div>
+                    <div style="font-size:21px;font-weight:800;color:#14213D;line-height:1.15">{{ s.value }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="margin-top:12px;display:flex;gap:10px">
+              <div style="flex:1;background:#16294A;border:3px solid #FFC42E;border-radius:19px;padding:10px 13px;display:flex;align-items:center;gap:9px">
+                <div style="width:27px;height:27px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFE9A0,#F2A800);border:3px solid #B87800"></div>
+                <div>
+                  <div style="font-size:10.5px;font-weight:800;letter-spacing:.12em;color:#7FA6DB">COINS</div>
+                  <div style="font-size:19px;font-weight:800;color:#fff;line-height:1.1">+{{ lastCoins }}</div>
+                </div>
+              </div>
+              <div style="flex:1;background:#16294A;border:3px solid #46C82B;border-radius:19px;padding:10px 13px">
+                <div style="font-size:10.5px;font-weight:800;letter-spacing:.12em;color:#7FA6DB">SEASON XP</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+                  <div style="flex:1;height:12px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden"><div style="{{ xpBarStyle }}"></div></div>
+                  <span style="font-size:14px;font-weight:800;color:#8DE87A">+{{ lastXp }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex:1"></div>
+            <div onClick="{{ startRun }}" style="height:80px;border-radius:24px;background:linear-gradient(#6BE04A,#33A81C);border:4px solid #1E7A0F;box-shadow:0 8px 0 #17610B;display:flex;align-items:center;justify-content:center;cursor:pointer" style-active="transform:translateY(5px);box-shadow:0 3px 0 #17610B">
+              <span style="font-family:'Luckiest Guy',cursive;font-size:32px;color:#fff">RUN IT BACK</span>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:11px">
+              <div onClick="{{ goHome }}" style="flex:1;height:54px;border-radius:19px;background:rgba(255,255,255,.14);border:3px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,.24)">
+                <span style="font-size:16px;font-weight:800;letter-spacing:.08em;color:#fff">MENU</span>
+              </div>
+              <div onClick="{{ goGarage }}" style="flex:1;height:54px;border-radius:19px;background:#FFC42E;border:3px solid #B4550A;box-shadow:0 5px 0 #B4550A;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="filter:brightness(1.06)">
+                <span style="font-size:16px;font-weight:800;letter-spacing:.08em;color:#14213D">GARAGE</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isGarage }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:linear-gradient(#2E9BF0,#7FCBF7 46%,#CFEBFF 100%);padding:58px 0 0;box-sizing:border-box;display:flex;flex-direction:column">
+            <div style="padding:0 14px 12px;display:flex;align-items:center;gap:10px">
+              <div onClick="{{ goHome }}" style="width:42px;height:42px;border-radius:14px;background:#16294A;border:3px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;font-weight:800;color:#fff">‹</div>
+              <div style="font-family:'Luckiest Guy',cursive;font-size:28px;color:#fff;flex:1;text-shadow:0 4px 0 #175FA8">GARAGE</div>
+              <div style="display:flex;align-items:center;gap:6px;background:#16294A;border-radius:999px;padding:5px 12px 5px 5px">
+                <div style="width:21px;height:21px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFE9A0,#F2A800);border:2px solid #B87800"></div>
+                <span style="font-size:15px;font-weight:800;color:#fff">{{ coins }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;background:#16294A;border-radius:999px;padding:5px 12px 5px 6px">
+                <div style="width:19px;height:19px;background:linear-gradient(#FFE07A,#F5A800);clip-path:polygon(50% 0,63% 36%,100% 38%,70% 61%,80% 100%,50% 76%,20% 100%,30% 61%,0 38%,37% 36%)"></div>
+                <span style="font-size:15px;font-weight:800;color:#fff">{{ gems }}</span>
+              </div>
+            </div>
+            <div onClick="{{ goUpgrade }}" style="margin:0 14px 10px;background:#16294A;border-radius:19px;box-shadow:0 5px 0 rgba(8,22,45,.4);padding:12px 15px;display:flex;align-items:center;gap:10px;cursor:pointer" style-hover="filter:brightness(1.15)">
+              <div style="font-size:13.5px;font-weight:800;letter-spacing:.06em;color:#fff;flex:1">UPGRADE {{ selCar.name }}</div>
+              <div style="font-size:12.5px;font-weight:800;color:#FFC42E">{{ upgradeLabel }} ›</div>
+            </div>
+            <div style="flex:1;overflow:auto;padding:0 14px 30px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <sc-for list="{{ cars }}" as="car" hint-placeholder-count="8">
+                  <div onClick="{{ car.onPick }}" style="{{ car.cardStyle }}" style-hover="filter:brightness(1.04)">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <span style="{{ car.rarityStyle }}">{{ car.rarity }}</span>
+                      <span style="{{ car.checkStyle }}">✓</span>
+                    </div>
+                    <div style="height:78px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px">
+                      <div style="{{ car.miniStyle }}">
+                        <div style="{{ car.miniRoofStyle }}"></div>
+                        <div style="position:absolute;left:22%;right:22%;top:16%;height:15%;background:#2C3E55;border-radius:5px"></div>
+                        <div style="position:absolute;left:-7%;top:44%;width:14%;height:20%;background:#1B2330;border-radius:4px"></div>
+                        <div style="position:absolute;right:-7%;top:44%;width:14%;height:20%;background:#1B2330;border-radius:4px"></div>
+                        <div style="position:absolute;left:12%;bottom:8%;width:22%;height:9%;background:#E8443A;border-radius:3px"></div>
+                        <div style="position:absolute;right:12%;bottom:8%;width:22%;height:9%;background:#E8443A;border-radius:3px"></div>
+                      </div>
+                    </div>
+                    <div style="font-size:14.5px;font-weight:800;color:#14213D;line-height:1.1">{{ car.name }}</div>
+                    <div style="{{ car.ctaStyle }}">{{ car.cta }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isUpgrade }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:linear-gradient(#2E9BF0,#7FCBF7 46%,#CFEBFF 100%);padding:58px 0 0;box-sizing:border-box;display:flex;flex-direction:column">
+            <div style="padding:0 14px 14px;display:flex;align-items:center;gap:10px">
+              <div onClick="{{ goGarage }}" style="width:42px;height:42px;border-radius:14px;background:#16294A;border:3px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;font-weight:800;color:#fff">‹</div>
+              <div style="font-family:'Luckiest Guy',cursive;font-size:26px;color:#fff;flex:1;text-shadow:0 4px 0 #175FA8">UPGRADES</div>
+              <div style="display:flex;align-items:center;gap:6px;background:#16294A;border-radius:999px;padding:5px 12px 5px 5px">
+                <div style="width:21px;height:21px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFE9A0,#F2A800);border:2px solid #B87800"></div>
+                <span style="font-size:15px;font-weight:800;color:#fff">{{ coins }}</span>
+              </div>
+            </div>
+            <div style="margin:0 14px 14px;background:rgba(255,255,255,.75);border-radius:19px;padding:12px 15px;display:flex;align-items:center;gap:13px">
+              <div style="{{ selCar.chipStyle }}"></div>
+              <div>
+                <div style="font-size:11px;font-weight:800;letter-spacing:.12em;color:rgba(20,33,61,.55)">EQUIPPED</div>
+                <div style="font-size:18px;font-weight:800;color:#14213D;line-height:1.1">{{ selCar.name }}</div>
+              </div>
+            </div>
+            <div style="flex:1;overflow:auto;padding:0 14px 30px;display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ upgrades }}" as="u" hint-placeholder-count="4">
+                <div style="background:#fff;border-radius:20px;box-shadow:0 5px 0 rgba(8,22,45,.16);padding:13px">
+                  <div style="display:flex;align-items:center;gap:11px">
+                    <div style="{{ u.iconStyle }}"></div>
+                    <div style="flex:1">
+                      <div style="font-size:16.5px;font-weight:800;color:#14213D;letter-spacing:.02em">{{ u.label }}</div>
+                      <div style="font-size:12.5px;font-weight:600;color:rgba(20,33,61,.6)">{{ u.desc }}</div>
+                    </div>
+                    <div onClick="{{ u.onBuy }}" style="{{ u.btnStyle }}">{{ u.btnLabel }}</div>
+                  </div>
+                  <div style="display:flex;gap:5px;margin-top:11px">
+                    <sc-for list="{{ u.pips }}" as="p" hint-placeholder-count="5">
+                      <div style="{{ p.style }}"></div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSeason }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:linear-gradient(#1F7FE0,#5FB8F5 50%,#FFC46B 100%);padding:58px 0 0;box-sizing:border-box;display:flex;flex-direction:column">
+            <div style="padding:0 14px 10px;display:flex;align-items:center;gap:10px">
+              <div onClick="{{ goHome }}" style="width:42px;height:42px;border-radius:14px;background:#16294A;border:3px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;font-weight:800;color:#fff">‹</div>
+              <div>
+                <div style="font-size:11px;font-weight:800;letter-spacing:.14em;color:#FFF3C9">SEASON 1 · 12 DAYS LEFT</div>
+                <div style="font-family:'Luckiest Guy',cursive;font-size:26px;color:#fff;line-height:1.05;text-shadow:0 4px 0 #175FA8">RUSH HOUR</div>
+              </div>
+            </div>
+            <div style="margin:0 14px 12px">
+              <div style="display:flex;justify-content:space-between;gap:10px;white-space:nowrap;font-size:11.5px;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.9);margin-bottom:5px"><span>TIER {{ level }}</span><span>{{ xpLabel }} XP</span></div>
+              <div style="height:16px;border-radius:999px;background:rgba(11,26,51,.35);overflow:hidden"><div style="{{ xpBarStyle }}"></div></div>
+            </div>
+            <div style="flex:1;overflow:auto;padding:0 14px 30px;display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ tiers }}" as="t" hint-placeholder-count="6">
+                <div style="{{ t.rowStyle }}">
+                  <div style="{{ t.numStyle }}">{{ t.tier }}</div>
+                  <div style="flex:1;display:flex;gap:8px">
+                    <div style="{{ t.freeStyle }}">
+                      <div style="font-size:10px;font-weight:800;letter-spacing:.1em;opacity:.6">FREE</div>
+                      <div style="font-size:14px;font-weight:800">{{ t.free }}</div>
+                    </div>
+                    <div style="{{ t.premStyle }}">
+                      <div style="font-size:10px;font-weight:800;letter-spacing:.1em;opacity:.8">PASS</div>
+                      <div style="font-size:14px;font-weight:800">{{ t.prem }}</div>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding:0 14px 40px">
+              <div onClick="{{ goShop }}" style="height:66px;border-radius:21px;background:linear-gradient(#6BE04A,#33A81C);border:4px solid #1E7A0F;box-shadow:0 7px 0 #17610B;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer" style-active="transform:translateY(4px);box-shadow:0 3px 0 #17610B">
+                <span style="font-family:'Luckiest Guy',cursive;font-size:21px;color:#fff;line-height:1.1">UNLOCK RUSH PASS</span>
+                <span style="font-size:11.5px;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.85)">+3 CARS · 2X COINS ALL SEASON</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isShop }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:linear-gradient(#2E9BF0,#9FDCFF);padding:58px 0 0;box-sizing:border-box;display:flex;flex-direction:column">
+            <div style="padding:0 14px 12px;display:flex;align-items:center;gap:10px">
+              <div onClick="{{ goHome }}" style="width:42px;height:42px;border-radius:14px;background:#16294A;border:3px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;font-weight:800;color:#fff">‹</div>
+              <div style="font-family:'Luckiest Guy',cursive;font-size:28px;color:#fff;flex:1;text-shadow:0 4px 0 #175FA8">SHOP</div>
+              <div style="display:flex;align-items:center;gap:6px;background:#16294A;border-radius:999px;padding:5px 12px 5px 6px">
+                <div style="width:19px;height:19px;background:linear-gradient(#FFE07A,#F5A800);clip-path:polygon(50% 0,63% 36%,100% 38%,70% 61%,80% 100%,50% 76%,20% 100%,30% 61%,0 38%,37% 36%)"></div>
+                <span style="font-size:15px;font-weight:800;color:#fff">{{ gems }}</span>
+              </div>
+            </div>
+            <div style="flex:1;overflow:auto;padding:0 14px 34px;display:flex;flex-direction:column;gap:11px">
+              <div style="background:linear-gradient(100deg,#FF7A3D,#FFC42E);border-radius:24px;box-shadow:0 6px 0 rgba(180,85,10,.55);padding:15px;position:relative;overflow:hidden">
+                <div style="position:absolute;top:0;bottom:0;width:50px;background:rgba(255,255,255,.4);animation:hdShine 3.6s linear infinite"></div>
+                <div style="font-size:11px;font-weight:800;letter-spacing:.14em;color:rgba(255,255,255,.9)">FREE · RESETS IN 04:12</div>
+                <div style="font-family:'Luckiest Guy',cursive;font-size:26px;color:#fff;line-height:1.1;margin-top:3px;text-shadow:0 3px 0 rgba(180,85,10,.6)">DAILY CRATE</div>
+                <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.95)">One spin. Coins, gems, or a random car.</div>
+                <div onClick="{{ claimCrate }}" style="margin-top:11px;height:46px;border-radius:15px;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 0 rgba(180,85,10,.35)">
+                  <span style="font-size:15px;font-weight:800;letter-spacing:.08em;color:#14213D">{{ crateLabel }}</span>
+                </div>
+              </div>
+              <div style="font-size:11px;font-weight:800;letter-spacing:.14em;color:rgba(255,255,255,.85);padding-left:4px;margin-top:2px">GEMS</div>
+              <sc-for list="{{ shopGems }}" as="g" hint-placeholder-count="3">
+                <div onClick="{{ g.onBuy }}" style="background:#fff;border-radius:19px;box-shadow:0 5px 0 rgba(8,22,45,.18);padding:12px 14px;display:flex;align-items:center;gap:13px;cursor:pointer" style-hover="filter:brightness(1.03)">
+                  <div style="{{ g.iconStyle }}"></div>
+                  <div style="flex:1">
+                    <div style="font-size:17px;font-weight:800;color:#14213D;line-height:1.1">{{ g.amount }}</div>
+                    <div style="font-size:12px;font-weight:700;color:rgba(20,33,61,.55)">{{ g.note }}</div>
+                  </div>
+                  <div style="background:#46C82B;border-radius:14px;padding:8px 14px;font-size:14px;font-weight:800;color:#fff;box-shadow:0 4px 0 #2E8C19">{{ g.price }}</div>
+                </div>
+              </sc-for>
+              <div style="font-size:11px;font-weight:800;letter-spacing:.14em;color:rgba(255,255,255,.85);padding-left:4px;margin-top:2px">COINS</div>
+              <sc-for list="{{ shopCoins }}" as="c" hint-placeholder-count="2">
+                <div onClick="{{ c.onBuy }}" style="background:#fff;border-radius:19px;box-shadow:0 5px 0 rgba(8,22,45,.18);padding:12px 14px;display:flex;align-items:center;gap:13px;cursor:pointer" style-hover="filter:brightness(1.03)">
+                  <div style="{{ c.iconStyle }}"></div>
+                  <div style="flex:1">
+                    <div style="font-size:17px;font-weight:800;color:#14213D;line-height:1.1">{{ c.amount }}</div>
+                    <div style="font-size:12px;font-weight:700;color:rgba(20,33,61,.55)">{{ c.note }}</div>
+                  </div>
+                  <div style="background:#FFC42E;border-radius:14px;padding:8px 14px;font-size:14px;font-weight:800;color:#14213D;box-shadow:0 4px 0 #B4550A">{{ c.price }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isMissions }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:linear-gradient(#2E9BF0,#9FDCFF);padding:58px 0 0;box-sizing:border-box;display:flex;flex-direction:column">
+            <div style="padding:0 14px 14px;display:flex;align-items:center;gap:10px">
+              <div onClick="{{ goHome }}" style="width:42px;height:42px;border-radius:14px;background:#16294A;border:3px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;font-weight:800;color:#fff">‹</div>
+              <div style="font-family:'Luckiest Guy',cursive;font-size:24px;color:#fff;flex:1;text-shadow:0 4px 0 #175FA8">DAILY MISSIONS</div>
+              <div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#16294A">14:02 LEFT</div>
+            </div>
+            <div style="padding:0 14px;display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ missions }}" as="m" hint-placeholder-count="3">
+                <div style="background:#fff;border-radius:20px;box-shadow:0 5px 0 rgba(8,22,45,.18);padding:13px">
+                  <div style="display:flex;align-items:center;gap:11px">
+                    <div style="{{ m.tickStyle }}"></div>
+                    <div style="flex:1">
+                      <div style="font-size:15.5px;font-weight:800;color:#14213D">{{ m.title }}</div>
+                      <div style="font-size:12.5px;font-weight:700;color:rgba(20,33,61,.55)">{{ m.reward }}</div>
+                    </div>
+                    <span style="font-size:13px;font-weight:800;color:#F59A00">{{ m.progressLabel }}</span>
+                  </div>
+                  <div style="height:9px;border-radius:999px;background:rgba(20,33,61,.12);margin-top:10px;overflow:hidden"><div style="{{ m.barStyle }}"></div></div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin:16px 14px 0;background:rgba(255,255,255,.28);border:2.5px solid rgba(255,255,255,.55);border-radius:20px;padding:13px 14px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px">
+                <div style="font-size:11px;font-weight:800;letter-spacing:.14em;color:#16294A">LOGIN STREAK</div>
+                <div style="font-size:13px;font-weight:800;color:#16294A">DAY 4 / 7</div>
+              </div>
+              <div style="display:flex;gap:6px">
+                <sc-for list="{{ streak }}" as="d" hint-placeholder-count="7">
+                  <div style="{{ d.style }}">{{ d.label }}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:1"></div>
+            <div onClick="{{ startRun }}" style="margin:0 14px 40px;height:72px;border-radius:23px;background:linear-gradient(#6BE04A,#33A81C);border:4px solid #1E7A0F;box-shadow:0 7px 0 #17610B;display:flex;align-items:center;justify-content:center;cursor:pointer" style-active="transform:translateY(4px);box-shadow:0 3px 0 #17610B">
+              <span style="font-family:'Luckiest Guy',cursive;font-size:29px;color:#fff">PLAY</span>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </x-import>
+
+    <div style="width:246px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:.14em;color:#5C7CAE;padding-left:4px">DESIGN NOTES</div>
+      <div style="background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.1);border-radius:16px;padding:13px 15px;font-size:13.5px;font-weight:600;color:#A9C4E8;line-height:1.5;text-wrap:pretty"><b style="color:#FFC42E">Real 3D road.</b> Low-poly cars, trees, barriers and skyline in a chase camera — the menu runs the same live scene behind the title, so the game sells itself before you tap.</div>
+      <div style="background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.1);border-radius:16px;padding:13px 15px;font-size:13.5px;font-weight:600;color:#A9C4E8;line-height:1.5;text-wrap:pretty"><b style="color:#46C82B">Near-misses</b> build combo and wanted stars; nitro widens the FOV and shoves the camera back — the clip moment.</div>
+      <div style="background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.1);border-radius:16px;padding:13px 15px;font-size:13.5px;font-weight:600;color:#A9C4E8;line-height:1.5;text-wrap:pretty"><b style="color:#7FE0FF">Next:</b> unique 3D models per unlockable car (shopping cart, hot dog wagon, jet), cop chase models, revive offer.</div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1160,&quot;height&quot;:1100},&quot;rampSeconds&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:115,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:30,&quot;max&quot;:180,&quot;step&quot;:5,&quot;unit&quot;:&quot;s&quot;,&quot;section&quot;:&quot;Tuning&quot;}}">
+const CARS = [
+  { id:'sprint', name:'STREET SPRINT', rarity:'COMMON', body:'#E8332E', roof:'#C22824', price:0, cur:'coins', stats:[3,3,2] },
+  { id:'cab',    name:'CITY CAB',      rarity:'COMMON', body:'#F2B705', roof:'#D19A00', price:0, cur:'coins', stats:[2,4,3] },
+  { id:'van',    name:'PARTY VAN',     rarity:'RARE',   body:'#24C6DC', roof:'#12A2B8', price:0, cur:'coins', stats:[2,3,5] },
+  { id:'brute',  name:'BRUTE V8',      rarity:'EPIC',   body:'#9B5DE5', roof:'#7B3FC7', price:4500, cur:'coins', stats:[5,2,2] },
+  { id:'cart',   name:'SHOPPING CART', rarity:'EPIC',   body:'#D7DEE8', roof:'#B3BDCC', price:60, cur:'gems', stats:[4,5,1] },
+  { id:'dog',    name:'HOT DOG WAGON', rarity:'LEGEND', body:'#F08A24', roof:'#D06A0C', price:120, cur:'gems', stats:[3,3,5] },
+  { id:'jet',    name:'JET ON WHEELS', rarity:'LEGEND', body:'#F5F7FA', roof:'#CDD6E2', price:9000, cur:'coins', stats:[5,4,3] },
+  { id:'cruiser',name:'STOLEN CRUISER',rarity:'MYTHIC', body:'#3B7BE0', roof:'#245FBC', price:250, cur:'gems', stats:[5,5,4] },
+];
+const RARITY_C = { COMMON:'#5B7392', RARE:'#12A2B8', EPIC:'#7B3FC7', LEGEND:'#F59A00', MYTHIC:'#E8332E' };
+const UPS = [
+  { id:'engine', label:'ENGINE', desc:'Higher top speed, faster ramp', color:'#E8332E' },
+  { id:'grip',   label:'GRIP',   desc:'Snappier steering response',    color:'#24C6DC' },
+  { id:'magnet', label:'MAGNET', desc:'Pull coins from other lanes',   color:'#FFC42E' },
+  { id:'nerve',  label:'NERVE',  desc:'Wider near-miss window',        color:'#46C82B' },
+];
+
+class Component extends DCLogic {
+  state = {
+    screen:'menu', coins:1240, gems:36, level:7, xp:340, xpMax:600,
+    sel:'sprint', owned:['sprint','cab','van'],
+    up:{ engine:2, grip:1, magnet:0, nerve:1 },
+    best:2140, last:null, crate:false, pops:[],
+    miss:[ {t:'Bank 25 near-misses', p:11, g:25, r:'+300 coins'},
+           {t:'Reach 4 wanted stars', p:2, g:4, r:'+15 gems'},
+           {t:'Drive 3,000 m total', p:1240, g:3000, r:'+1 crate'} ],
+  };
+
+  seq = 0;
+
+  componentWillUnmount() { (this.timers || []).forEach(clearTimeout); }
+
+  // the 3D scene writes HUD values straight into these nodes (host DOM, 60fps, no re-render)
+  onHud = (e) => {
+    let d; try { d = JSON.parse(e.currentTarget.dataset.hud); } catch (_) { return; }
+    const doc = e.currentTarget.ownerDocument;
+    const set = (k, v) => { const el = doc.querySelector('[data-hd-num="' + k + '"]'); if (el && el.textContent !== v) el.textContent = v; };
+    set('speed', String(d.kmh));
+    set('dist', d.dist.toLocaleString() + ' M');
+    set('coins', String(d.coins));
+    const heat = d.stars >= 5 ? 'PULL OVER!' : d.stars >= 3 ? 'COPS ON YOU' : d.stars >= 1 ? 'HEATING UP' : 'CRUISING';
+    set('heat', heat);
+    const heatEl = doc.querySelector('[data-hd-num="heat"]');
+    if (heatEl) heatEl.style.color = d.stars >= 3 ? '#FF6B5E' : 'rgba(255,255,255,.8)';
+    const combo = doc.querySelector('[data-hd-num="combo"]');
+    if (combo) { combo.style.opacity = d.combo > 1 ? '1' : '0'; combo.textContent = 'COMBO x' + d.combo; }
+    for (let i = 0; i < 5; i++) {
+      const st = doc.querySelector('[data-hd-star="' + i + '"]');
+      if (!st) continue;
+      const on = i < d.stars;
+      st.style.cssText = 'width:22px;height:22px;clip-path:polygon(50% 0,63% 36%,100% 38%,70% 61%,80% 100%,50% 76%,20% 100%,30% 61%,0 38%,37% 36%);background:' +
+        (on ? '#FF4D3D' : 'rgba(11,26,51,.55)') + (on ? ';filter:drop-shadow(0 0 8px rgba(255,77,61,.9))' : '');
+    }
+    const hint = doc.querySelector('[data-hd-hint]');
+    if (hint) hint.style.opacity = d.started ? '0' : '1';
+    const spd = doc.querySelector('[data-hd-num="speed"]');
+    if (spd) spd.style.color = d.kmh > 250 ? '#7FE0FF' : '#fff';
+  };
+
+  onNear = (e) => {
+    let d; try { d = JSON.parse(e.currentTarget.dataset.payload); } catch (_) { return; }
+    const text = d.combo > 9 ? 'UNREAL!' : d.combo > 5 ? 'INSANE!' : d.combo > 2 ? 'SO CLOSE!' : 'CLOSE ONE!';
+    this.addPop(text, '#FFC42E', d.combo > 5 ? 34 : 28);
+    if (d.stars && d.combo % 4 === 0) this.addPop('WANTED +1', '#FF4D3D', 25);
+  };
+  addPop(text, color, size) {
+    const id = ++this.seq;
+    const x = 34 + Math.random() * 32, y = 250 + Math.random() * 60;
+    this.setState(s => ({ pops: s.pops.concat([{ id, text, color, size, x, y }]).slice(-4) }));
+    const t = setTimeout(() => this.setState(s => ({ pops: s.pops.filter(p => p.id !== id) })), 950);
+    (this.timers = this.timers || []).push(t);
+  }
+
+  onCrash = (e) => {
+    let d; try { d = JSON.parse(e.currentTarget.dataset.payload); } catch (_) { return; }
+    const t = setTimeout(() => {
+      this.setState(s => {
+        const xpTotal = s.xp + d.xp, lvUp = xpTotal >= s.xpMax;
+        return {
+          screen:'crash', last: d, pops: [],
+          coins: s.coins + d.coins + Math.round(d.dist / 12),
+          best: Math.max(s.best, d.dist),
+          xp: lvUp ? xpTotal - s.xpMax : xpTotal,
+          level: lvUp ? s.level + 1 : s.level,
+          miss: s.miss.map((m, i) => ({ ...m, p: Math.min(m.g, i === 0 ? m.p + d.near : i === 1 ? Math.max(m.p, d.stars) : m.p + d.dist) })),
+        };
+      });
+    }, 120);
+    (this.timers = this.timers || []).push(t);
+  };
+
+  fireNitro = (e) => {
+    const scene = e.currentTarget.ownerDocument.querySelector('hd-scene');
+    if (scene && scene.nitro) scene.nitro();
+  };
+
+  go = (screen) => () => this.setState({ screen, pops: [] });
+  pickCar = (car) => () => {
+    if (this.state.owned.includes(car.id)) { this.setState({ sel: car.id }); return; }
+    const bal = car.cur === 'gems' ? this.state.gems : this.state.coins;
+    if (bal < car.price) return;
+    this.setState(s => ({
+      owned: [...s.owned, car.id], sel: car.id,
+      coins: car.cur === 'coins' ? s.coins - car.price : s.coins,
+      gems: car.cur === 'gems' ? s.gems - car.price : s.gems,
+    }));
+  };
+  buyUp = (id, cost) => () => {
+    if (this.state.coins < cost || this.state.up[id] >= 5) return;
+    this.setState(s => ({ coins: s.coins - cost, up: { ...s.up, [id]: s.up[id] + 1 } }));
+  };
+  pips(n, color) {
+    return Array.from({ length: 5 }, (_, i) => ({
+      style: 'flex:1;height:10px;border-radius:5px;background:' + (i < n ? color : 'rgba(20,33,61,.13)'),
+    }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const car = CARS.find(c => c.id === s.sel) || CARS[0];
+    const xpPct = Math.round((s.xp / s.xpMax) * 100);
+    const showScene = s.screen === 'menu' || s.screen === 'run' || s.screen === 'crash';
+    const navMeta = [
+      ['menu','MAIN MENU','live 3D title screen'],
+      ['run','LIVE RUN','playable · drag to steer'],
+      ['crash','CRASH SUMMARY','after a run'],
+      ['garage','CAR COLLECTION','8 cars, 5 rarities'],
+      ['upgrade','UPGRADE TRACKS','4 × 5 levels'],
+      ['season','SEASON PASS','tier track'],
+      ['missions','DAILIES + STREAK','3 missions'],
+      ['shop','SHOP','coins · gems · crate'],
+    ];
+    const last = s.last || { title:'SMASHED!', dist:0, coins:0, xp:0, near:0, top:90, stars:0 };
+
+    return {
+      isMenu: s.screen === 'menu', isRun: s.screen === 'run', isCrash: s.screen === 'crash',
+      isGarage: s.screen === 'garage', isUpgrade: s.screen === 'upgrade',
+      isSeason: s.screen === 'season', isShop: s.screen === 'shop', isMissions: s.screen === 'missions',
+      sceneMode: s.screen === 'run' ? 'run' : s.screen === 'crash' ? 'run' : 'menu',
+      rampStr: String(this.props.rampSeconds ?? 115),
+      sceneStyle: 'position:absolute;inset:0;' + (showScene ? '' : 'visibility:hidden;'),
+
+      coins: s.coins.toLocaleString(), gems: s.gems, level: s.level,
+      xpLabel: s.xp + '/' + s.xpMax,
+      xpBarStyle: 'height:100%;width:' + xpPct + '%;border-radius:999px;background:linear-gradient(90deg,#FFE07A,#F59A00)',
+      bestLabel: s.best.toLocaleString() + ' M',
+      upgradeLabel: 'LV ' + Object.values(s.up).reduce((a, b) => a + b, 0),
+
+      onHud: this.onHud, onNear: this.onNear, onCrash: this.onCrash, fireNitro: this.fireNitro,
+      startRun: this.go('run'), goHome: this.go('menu'), goGarage: this.go('garage'),
+      goUpgrade: this.go('upgrade'), goShop: this.go('shop'), goMissions: this.go('missions'),
+      goSeason: this.go('season'),
+      claimCrate: () => this.setState(st => st.crate ? {} : { crate:true, gems: st.gems + 12 }),
+      crateLabel: s.crate ? 'CLAIMED · +12 GEMS' : 'OPEN CRATE',
+
+      pops: s.pops.map(p => ({
+        text: p.text,
+        style: 'position:absolute;left:' + p.x + '%;top:' + p.y + 'px;transform:translate(-50%,0);font-family:Luckiest Guy,cursive;font-size:' + p.size + 'px;color:' + p.color + ';text-shadow:0 4px 0 rgba(8,22,45,.75);white-space:nowrap;pointer-events:none;z-index:250;animation:hdPop .95s ease-out forwards',
+      })),
+
+      navList: navMeta.map(([id, label, note]) => ({
+        label, note, go: this.go(id),
+        style: 'display:flex;flex-direction:column;padding:9px 12px;border-radius:13px;cursor:pointer;border:2px solid ' +
+          (s.screen === id ? '#FFC42E' : 'rgba(255,255,255,.1)') + ';background:' +
+          (s.screen === id ? 'rgba(255,196,46,.14)' : 'rgba(255,255,255,.04)') + ';color:' +
+          (s.screen === id ? '#FFC42E' : '#9DB9DF'),
+      })),
+
+      selCar: {
+        name: car.name, rarity: car.rarity,
+        chipStyle: 'width:46px;height:62px;border-radius:14px;background:' + car.body + ';border:3px solid rgba(20,33,61,.35)',
+      },
+
+      cars: CARS.map(c => {
+        const owned = s.owned.includes(c.id), selected = c.id === s.sel;
+        return {
+          name: c.name, rarity: c.rarity, onPick: this.pickCar(c),
+          cardStyle: 'background:' + (owned ? '#fff' : 'rgba(255,255,255,.62)') + ';border-radius:20px;box-shadow:0 5px 0 ' +
+            (selected ? '#F59A00' : 'rgba(8,22,45,.18)') + (selected ? ';outline:3px solid #FFC42E' : '') + ';padding:10px 11px 11px;cursor:pointer',
+          rarityStyle: 'font-size:9.5px;font-weight:800;letter-spacing:.12em;color:' + RARITY_C[c.rarity],
+          checkStyle: 'font-size:13px;font-weight:800;color:#F59A00;opacity:' + (selected ? '1' : '0'),
+          miniStyle: 'position:relative;width:60px;height:74px;border-radius:14px 14px 10px 10px;background:' + c.body +
+            ';box-shadow:inset 0 -8px 0 rgba(0,0,0,.12)' + (owned ? '' : ';filter:grayscale(.7) brightness(.85)'),
+          miniRoofStyle: 'position:absolute;left:16%;right:16%;top:10%;height:28%;border-radius:9px;background:' + c.roof,
+          cta: owned ? (selected ? 'EQUIPPED' : 'EQUIP') : (c.price.toLocaleString() + (c.cur === 'gems' ? ' GEMS' : ' COINS')),
+          ctaStyle: 'margin-top:8px;text-align:center;border-radius:12px;padding:6px 0;font-size:12px;font-weight:800;letter-spacing:.06em;background:' +
+            (owned ? (selected ? '#FFC42E' : '#E7EEF7') : (c.cur === 'gems' ? '#46C82B' : '#FFC42E')) +
+            ';color:' + (owned && !selected ? '#5B7392' : c.cur === 'gems' && !owned ? '#fff' : '#14213D'),
+        };
+      }),
+
+      upgrades: UPS.map(u => {
+        const lv = s.up[u.id], cost = 400 + lv * 650, maxed = lv >= 5;
+        return {
+          label: u.label, desc: u.desc, pips: this.pips(lv, u.color), onBuy: this.buyUp(u.id, cost),
+          iconStyle: 'width:42px;height:42px;border-radius:14px;background:' + u.color + ';box-shadow:0 4px 0 rgba(8,22,45,.2)',
+          btnLabel: maxed ? 'MAX' : cost.toLocaleString(),
+          btnStyle: 'border-radius:14px;padding:9px 14px;font-size:13.5px;font-weight:800;cursor:pointer;background:' +
+            (maxed ? '#E7EEF7' : s.coins >= cost ? '#46C82B' : '#E7EEF7') +
+            ';color:' + (maxed || s.coins < cost ? '#8FA3BE' : '#fff') +
+            (maxed || s.coins < cost ? '' : ';box-shadow:0 4px 0 #2E8C19'),
+        };
+      }),
+
+      tiers: [4,5,6,7,8,9,10,11].map(t => {
+        const done = t <= s.level;
+        const frees = { 4:'250 coins', 5:'1 crate', 6:'400 coins', 7:'10 gems', 8:'600 coins', 9:'1 crate', 10:'20 gems', 11:'900 coins' };
+        const prems = { 4:'HOT DOG WAGON', 5:'Neon trail', 6:'40 gems', 7:'2× coin hour', 8:'SHOPPING CART', 9:'80 gems', 10:'Siren horn', 11:'STOLEN CRUISER' };
+        return {
+          tier: t, free: frees[t], prem: prems[t],
+          rowStyle: 'display:flex;align-items:stretch;gap:9px;padding:8px;border-radius:18px;background:' + (done ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.4)'),
+          numStyle: 'width:38px;display:flex;align-items:center;justify-content:center;border-radius:13px;font-family:Luckiest Guy,cursive;font-size:18px;background:' + (done ? '#FFC42E' : 'rgba(20,33,61,.14)') + ';color:' + (done ? '#14213D' : '#5B7392'),
+          freeStyle: 'flex:1;border-radius:13px;padding:6px 10px;background:rgba(20,33,61,.07);color:#14213D',
+          premStyle: 'flex:1;border-radius:13px;padding:6px 10px;background:linear-gradient(#6BE04A,#33A81C);color:#fff;opacity:' + (done ? '1' : '.75'),
+        };
+      }),
+
+      missions: s.miss.map(m => {
+        const pct = Math.min(100, Math.round((m.p / m.g) * 100)), done = m.p >= m.g;
+        return {
+          title: m.t, reward: m.r, progressLabel: Math.min(m.p, m.g).toLocaleString() + '/' + m.g.toLocaleString(),
+          barStyle: 'height:100%;width:' + pct + '%;border-radius:999px;background:' + (done ? 'linear-gradient(90deg,#6BE04A,#33A81C)' : 'linear-gradient(90deg,#FFE07A,#F59A00)'),
+          tickStyle: 'width:28px;height:28px;border-radius:10px;background:' + (done ? '#46C82B' : 'rgba(20,33,61,.12)'),
+        };
+      }),
+
+      streak: ['1','2','3','4','5','6','7'].map(d => ({
+        label: d,
+        style: 'flex:1;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;background:' +
+          (+d < 4 ? '#46C82B' : +d === 4 ? '#FFC42E' : 'rgba(255,255,255,.55)') + ';color:' + (+d < 4 ? '#fff' : '#14213D'),
+      })),
+
+      shopGems: [
+        { amount:'80 GEMS', note:'Starter stack', price:'$1.99' },
+        { amount:'450 GEMS', note:'Most popular · +15%', price:'$9.99' },
+        { amount:'1,200 GEMS', note:'Best value · +30%', price:'$24.99' },
+      ].map((gg, i) => ({ ...gg, onBuy: () => this.setState(st => ({ gems: st.gems + [80,450,1200][i] })),
+        iconStyle: 'width:44px;height:44px;background:linear-gradient(#FFE07A,#F5A800);clip-path:polygon(50% 0,63% 36%,100% 38%,70% 61%,80% 100%,50% 76%,20% 100%,30% 61%,0 38%,37% 36%)' })),
+      shopCoins: [
+        { amount:'5,000 COINS', note:'Tune one track fully', price:'25 GEMS' },
+        { amount:'18,000 COINS', note:'+20% bonus', price:'80 GEMS' },
+      ].map((c, i) => ({ ...c, onBuy: () => this.setState(st => {
+          const cost = [25,80][i]; if (st.gems < cost) return {};
+          return { gems: st.gems - cost, coins: st.coins + [5000,18000][i] };
+        }),
+        iconStyle: 'width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFE9A0,#F2A800);border:3px solid #B87800' })),
+
+      crashTitle: last.title, crashColor: last.title === 'BUSTED!' ? '#7FE0FF' : '#FF6B5E',
+      crashSub: last.title === 'BUSTED!' ? 'THE COPS BOXED YOU IN' : 'YOU KISSED A MINIVAN',
+      lastDist: last.dist.toLocaleString(), lastCoins: (last.coins + Math.round(last.dist / 12)).toLocaleString(), lastXp: last.xp,
+      lastStats: [
+        { label:'NEAR MISSES', value: last.near },
+        { label:'TOP SPEED', value: last.top + ' KM/H' },
+        { label:'WANTED PEAK', value: '★ ' + last.stars },
+        { label:'CAR', value: car.name },
+      ],
+    };
+  }
+}
+
+</script>
+</body>
+</html>
