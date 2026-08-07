@@ -1,7 +1,7 @@
 import type { Scene } from 'three';
 
 import { ObjectPool } from '@/core/ObjectPool';
-import { pickRandom, randomRange } from '@/core/math';
+import { clamp, randomRange } from '@/core/math';
 import type { VehicleSilhouette } from '@/domain/cars';
 import { DESPAWN_Z, LANE_OFFSETS, SPAWN_Z, TRAFFIC } from '@/engine/config';
 import type { GameSystem, SystemContext, VehicleObject } from '@/engine/types';
@@ -11,12 +11,16 @@ import { activeModelIdAt } from '@/engine/vehicles/vehicleModelConfig';
 export interface TrafficObserver {
   onNearMiss(): void;
   onImpact(): void;
+  onRam(): void;
 }
 
-/** Single-model performance test: every traffic car uses the same body shape. */
+/** Single-model performance mode is preserved while the authored GLB pipeline is stabilized. */
 const TEST_TRAFFIC_SILHOUETTE: VehicleSilhouette = 'hatch';
 
-/** Spawns, drives and recycles traffic and owns traffic collision geometry. */
+/**
+ * Traffic now serves readable patterns. Density still rises over a long run,
+ * but event beats decide when pressure is applied and every wall leaves a gap.
+ */
 export class TrafficSystem implements GameSystem {
   readonly name = 'traffic';
 
@@ -24,6 +28,8 @@ export class TrafficSystem implements GameSystem {
   private readonly pool: ObjectPool<VehicleObject>;
   private spawnTimer = 0.8;
   private modelCursor = 0;
+  private lastEventSerial = -1;
+  private setPieceDelay = -1;
 
   constructor(
     private readonly scene: Scene,
@@ -58,7 +64,9 @@ export class TrafficSystem implements GameSystem {
   reset(ctx: Omit<SystemContext, 'dt' | 'scroll'>): void {
     this.recycleAll();
     this.modelCursor = 0;
-    this.spawnTimer = ctx.state.mode === 'run' ? 0.75 : 0.7;
+    this.lastEventSerial = ctx.state.eventSerial;
+    this.setPieceDelay = -1;
+    this.spawnTimer = ctx.state.mode === 'run' ? 1.05 : 0.7;
     this.prefill(ctx.state.mode === 'run');
   }
 
@@ -67,12 +75,27 @@ export class TrafficSystem implements GameSystem {
   }
 
   private spawnStep({ state, dt }: SystemContext): void {
+    const maxActive = state.mode === 'run' ? TRAFFIC.maxActiveRun : TRAFFIC.maxActiveAttract;
+
+    if (state.mode === 'run' && state.eventSerial !== this.lastEventSerial) {
+      this.lastEventSerial = state.eventSerial;
+      this.setPieceDelay = state.event === 'roadblock' || state.event === 'construction' ? 1.0 : -1;
+    }
+
+    if (this.setPieceDelay >= 0) {
+      this.setPieceDelay -= dt;
+      if (this.setPieceDelay <= 0) {
+        this.setPieceDelay = -1;
+        if (state.event === 'roadblock') this.spawnRoadblock(maxActive);
+        else if (state.event === 'construction') this.spawnConstructionGate(maxActive);
+      }
+    }
+
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
 
-    const maxActive = state.mode === 'run' ? TRAFFIC.maxActiveRun : TRAFFIC.maxActiveAttract;
     if (this.active.length >= maxActive) {
-      this.spawnTimer = state.mode === 'run' ? TRAFFIC.minInterval : TRAFFIC.attractInterval;
+      this.spawnTimer = state.mode === 'run' ? 0.5 : TRAFFIC.attractInterval;
       return;
     }
 
@@ -82,25 +105,33 @@ export class TrafficSystem implements GameSystem {
       return;
     }
 
-    const linear = Math.min(1, state.elapsed / TRAFFIC.difficultyRampSeconds);
-    const difficulty = Math.pow(linear, 0.72);
-    this.spawnTimer =
-      TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * difficulty;
+    const difficulty = clamp(state.elapsed / TRAFFIC.difficultyRampSeconds, 0, 1);
+    const base = TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * difficulty;
+    const pressureFactor = 1.25 - state.trafficIntensity * 0.35;
+    const recoveryFactor = state.event === 'cruise' ? 1.12 : state.event === 'coinRush' ? 1.22 : 1;
+    this.spawnTimer = Math.max(TRAFFIC.minInterval, base * pressureFactor * recoveryFactor);
+
     this.spawn();
 
-    if (state.elapsed > TRAFFIC.doubleSpawnAfter && this.active.length < maxActive) {
-      const chance =
-        TRAFFIC.doubleSpawnBaseChance +
-        (TRAFFIC.doubleSpawnMaxChance - TRAFFIC.doubleSpawnBaseChance) * difficulty;
-      if (Math.random() < chance) this.spawn();
+    const doubleChance =
+      TRAFFIC.doubleSpawnBaseChance +
+      (TRAFFIC.doubleSpawnMaxChance - TRAFFIC.doubleSpawnBaseChance) * difficulty;
+
+    if (
+      state.elapsed > TRAFFIC.doubleSpawnAfter &&
+      this.active.length <= maxActive - 2 &&
+      Math.random() < doubleChance * state.trafficIntensity
+    ) {
+      this.spawnPair();
     }
 
     if (
       state.elapsed > TRAFFIC.tripleSpawnAfter &&
-      this.active.length < maxActive &&
+      state.event !== 'cruise' &&
+      this.active.length <= maxActive - 3 &&
       Math.random() < TRAFFIC.tripleSpawnMaxChance * difficulty
     ) {
-      this.spawn();
+      this.spawnWallWithGap();
     }
   }
 
@@ -131,6 +162,7 @@ export class TrafficSystem implements GameSystem {
         if (dz > -TRAFFIC.playerHalfLength && dz < TRAFFIC.playerHalfLength && dx < halfWidth) {
           if (state.nitroRemaining > 0) {
             this.launchFromNitro(vehicle, player.position.x, state);
+            this.observer.onRam();
             continue;
           }
 
@@ -165,8 +197,8 @@ export class TrafficSystem implements GameSystem {
       TRAFFIC.ramForwardSpeedMin,
       TRAFFIC.ramForwardSpeedMax,
     );
-    vehicle.userData.ramSpin = side * randomRange(6.5, 11);
-    state.cameraShake = Math.max(state.cameraShake, 2.1);
+    vehicle.userData.ramSpin = side * randomRange(7.5, 12.5);
+    state.cameraShake = Math.max(state.cameraShake, 2.5);
   }
 
   private updateRammed(vehicle: VehicleObject, dt: number): void {
@@ -184,13 +216,14 @@ export class TrafficSystem implements GameSystem {
     vehicle.rotation.z += spin * 0.7 * dt;
   }
 
-  private spawn(): VehicleObject {
+  private spawn(laneIndex?: number, zOffset = 0): VehicleObject {
     const vehicle = this.pool.acquire();
-
-    // All pooled cars already contain the same compressed blue GLB. No body
-    // reskin/reclone work is needed when they are recycled back into traffic.
-    const lane = pickRandom(LANE_OFFSETS);
-    vehicle.position.set(lane + randomRange(-TRAFFIC.laneJitter, TRAFFIC.laneJitter), 0, SPAWN_Z);
+    const lane = laneIndex ?? this.pickOpenLane();
+    vehicle.position.set(
+      LANE_OFFSETS[lane] + randomRange(-TRAFFIC.laneJitter, TRAFFIC.laneJitter),
+      0,
+      SPAWN_Z + zOffset,
+    );
     vehicle.rotation.set(0, 0, 0);
     vehicle.userData.speed = randomRange(TRAFFIC.minSpeed, TRAFFIC.maxSpeed);
     vehicle.userData.passed = false;
@@ -203,18 +236,60 @@ export class TrafficSystem implements GameSystem {
     return vehicle;
   }
 
+  private spawnPair(): void {
+    const first = Math.floor(Math.random() * LANE_OFFSETS.length);
+    let second = Math.floor(Math.random() * (LANE_OFFSETS.length - 1));
+    if (second >= first) second += 1;
+    this.spawn(first, 0);
+    this.spawn(second, -2.5);
+  }
+
+  /** Three cars can be dramatic because one entire lane is always explicitly open. */
+  private spawnWallWithGap(): void {
+    const gap = Math.floor(Math.random() * LANE_OFFSETS.length);
+    for (let lane = 0; lane < LANE_OFFSETS.length; lane++) {
+      if (lane !== gap) this.spawn(lane, randomRange(-1.2, 1.2));
+    }
+  }
+
+  private spawnRoadblock(maxActive: number): void {
+    if (this.active.length > maxActive - 3) return;
+    this.spawnWallWithGap();
+    this.spawnTimer = Math.max(this.spawnTimer, 1.3);
+  }
+
+  private spawnConstructionGate(maxActive: number): void {
+    if (this.active.length > maxActive - 2) return;
+    const blockRight = Math.random() < 0.5;
+    this.spawn(blockRight ? 2 : 0, 0);
+    this.spawn(blockRight ? 3 : 1, -3);
+    this.spawnTimer = Math.max(this.spawnTimer, 1.45);
+  }
+
+  private pickOpenLane(): number {
+    const weights = LANE_OFFSETS.map((laneX) => {
+      let nearby = 0;
+      for (const vehicle of this.active) {
+        if (Math.abs(vehicle.position.x - laneX) < 1.2 && vehicle.position.z < -118) nearby += 1;
+      }
+      return nearby;
+    });
+    const min = Math.min(...weights);
+    const candidates = weights.flatMap((weight, lane) => (weight === min ? [lane] : []));
+    return candidates[Math.floor(Math.random() * candidates.length)] ?? 1;
+  }
+
   private prefill(isRun: boolean): void {
     const count = isRun ? TRAFFIC.runPrefillCount : TRAFFIC.attractPrefillCount;
-    const start = isRun ? -102 : -18;
-    const gap = isRun ? 27 : 20;
+    const start = isRun ? -108 : -18;
+    const gap = isRun ? 31 : 20;
 
     for (let i = 0; i < count; i++) {
-      const vehicle = this.spawn();
-      vehicle.position.z = start - i * gap - randomRange(0, isRun ? 7 : 5);
+      const vehicle = this.spawn(i % LANE_OFFSETS.length);
+      vehicle.position.z = start - i * gap - randomRange(0, isRun ? 8 : 5);
 
-      if (isRun && i < 2 && Math.abs(vehicle.position.x) < 2.6) {
-        vehicle.position.x = vehicle.position.x < 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
-      }
+      // First two reads are deliberately wide, giving a new run a clear centre corridor.
+      if (isRun && i < 2) vehicle.position.x = i === 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
     }
   }
 
