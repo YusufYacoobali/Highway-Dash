@@ -71,6 +71,14 @@ export class TrafficSystem implements GameSystem {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
 
+    const maxActive = state.mode === 'run' ? TRAFFIC.maxActiveRun : TRAFFIC.maxActiveAttract;
+    if (this.active.length >= maxActive) {
+      // Keep checking frequently so the pacing resumes as soon as a car exits,
+      // but don't let expensive Meshy clones pile up offscreen.
+      this.spawnTimer = state.mode === 'run' ? TRAFFIC.minInterval : TRAFFIC.attractInterval;
+      return;
+    }
+
     if (state.mode === 'attract') {
       this.spawnTimer = TRAFFIC.attractInterval;
       this.spawn();
@@ -83,7 +91,7 @@ export class TrafficSystem implements GameSystem {
       TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * difficulty;
     this.spawn();
 
-    if (state.elapsed > TRAFFIC.doubleSpawnAfter) {
+    if (state.elapsed > TRAFFIC.doubleSpawnAfter && this.active.length < maxActive) {
       const chance =
         TRAFFIC.doubleSpawnBaseChance +
         (TRAFFIC.doubleSpawnMaxChance - TRAFFIC.doubleSpawnBaseChance) * difficulty;
@@ -92,6 +100,7 @@ export class TrafficSystem implements GameSystem {
 
     if (
       state.elapsed > TRAFFIC.tripleSpawnAfter &&
+      this.active.length < maxActive &&
       Math.random() < TRAFFIC.tripleSpawnMaxChance * difficulty
     ) {
       this.spawn();
