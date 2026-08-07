@@ -14,7 +14,7 @@ import {
   shopGradient,
 } from '@/ui/components';
 import { useMinuteTick } from '@/ui/hooks/useMinuteTick';
-import { alpha, palette, radii, spacing } from '@/ui/theme';
+import { alpha, palette, radii } from '@/ui/theme';
 
 export interface ShopScreenProps {
   gems: number;
@@ -128,7 +128,7 @@ const BundleRow: React.FC<BundleRowProps> = ({ bundle, icon, accent, affordable 
       <AppText variant="body" color={alpha.white55}>{bundle.note}</AppText>
     </View>
     <View style={styles.price}>
-      <AppText variant="bodyStrong" color={affordable ? palette.white : alpha.white35 ?? alpha.white45}>
+      <AppText variant="bodyStrong" color={affordable ? palette.white : alpha.white45}>
         {bundle.price}
       </AppText>
     </View>
