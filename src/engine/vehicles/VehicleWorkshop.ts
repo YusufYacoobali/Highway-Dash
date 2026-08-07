@@ -75,7 +75,7 @@ export class VehicleWorkshop {
 
   create(spec: VehicleBodySpec): VehicleObject {
     const vehicle = new Group() as VehicleObject;
-    const raw = this.provider.dimensions(spec.silhouette);
+    const raw = this.provider.dimensions(spec.silhouette, spec.modelId);
     const length = raw.length * VEHICLE_SCALE;
     const width = raw.width * VEHICLE_SCALE;
 
@@ -84,6 +84,7 @@ export class VehicleWorkshop {
       width,
       silhouette: spec.silhouette,
       livery: spec.livery,
+      modelId: spec.modelId,
       speed: 0,
       passed: false,
     };
@@ -94,14 +95,21 @@ export class VehicleWorkshop {
   }
 
   /** Re-paints/rebuilds an existing vehicle in place. */
-  reskin(vehicle: VehicleObject, silhouette: VehicleSilhouette, livery: Livery, recolor: boolean): void {
-    const raw = this.provider.dimensions(silhouette);
+  reskin(
+    vehicle: VehicleObject,
+    silhouette: VehicleSilhouette,
+    livery: Livery,
+    recolor: boolean,
+    modelId: string | undefined = vehicle.userData.modelId,
+  ): void {
+    const raw = this.provider.dimensions(silhouette, modelId);
     vehicle.userData.silhouette = silhouette;
     vehicle.userData.livery = livery;
+    vehicle.userData.modelId = modelId;
     vehicle.userData.length = raw.length * VEHICLE_SCALE;
     vehicle.userData.width = raw.width * VEHICLE_SCALE;
 
-    this.replaceBody(vehicle, { silhouette, livery, recolor });
+    this.replaceBody(vehicle, { silhouette, livery, recolor, modelId });
   }
 
   async prepareModels(): Promise<boolean> {
@@ -120,8 +128,8 @@ export class VehicleWorkshop {
     this.preparedProvider = null;
 
     for (const vehicle of this.issued) {
-      const { silhouette, livery } = vehicle.userData;
-      this.reskin(vehicle, silhouette, livery, vehicle === playerVehicle);
+      const { silhouette, livery, modelId } = vehicle.userData;
+      this.reskin(vehicle, silhouette, livery, vehicle === playerVehicle, modelId);
     }
     return true;
   }
