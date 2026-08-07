@@ -9,6 +9,7 @@ import {
   randomTrafficSilhouette,
   VehicleWorkshop,
 } from '@/engine/vehicles/VehicleWorkshop';
+import { activeModelIdAt } from '@/engine/vehicles/vehicleModelConfig';
 
 export interface TrafficObserver {
   onNearMiss(): void;
@@ -22,6 +23,8 @@ export class TrafficSystem implements GameSystem {
   private readonly active: VehicleObject[] = [];
   private readonly pool: ObjectPool<VehicleObject>;
   private spawnTimer = 0.8;
+  /** Cycles the test pool so every active GLB is guaranteed to appear. */
+  private modelCursor = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -33,6 +36,7 @@ export class TrafficSystem implements GameSystem {
         const vehicle = this.workshop.create({
           silhouette: randomTrafficSilhouette(),
           livery: randomTrafficLivery(),
+          modelId: activeModelIdAt(this.modelCursor++),
           recolor: false,
         });
         this.scene.add(vehicle);
@@ -54,6 +58,7 @@ export class TrafficSystem implements GameSystem {
 
   reset(ctx: Omit<SystemContext, 'dt' | 'scroll'>): void {
     this.recycleAll();
+    this.modelCursor = 0;
     this.spawnTimer = ctx.state.mode === 'run' ? 0.75 : 0.7;
     this.prefill(ctx.state.mode === 'run');
   }
@@ -72,8 +77,6 @@ export class TrafficSystem implements GameSystem {
       return;
     }
 
-    // Sub-linear easing means the difficulty is already noticeably moving by
-    // 10–15 seconds instead of waiting until the back half of the run.
     const linear = Math.min(1, state.elapsed / TRAFFIC.difficultyRampSeconds);
     const difficulty = Math.pow(linear, 0.72);
     this.spawnTimer =
@@ -179,8 +182,9 @@ export class TrafficSystem implements GameSystem {
     const vehicle = this.pool.acquire();
 
     const silhouette = randomTrafficSilhouette();
-    if (vehicle.userData.silhouette !== silhouette) {
-      this.workshop.reskin(vehicle, silhouette, randomTrafficLivery(), false);
+    const modelId = activeModelIdAt(this.modelCursor++);
+    if (vehicle.userData.silhouette !== silhouette || vehicle.userData.modelId !== modelId) {
+      this.workshop.reskin(vehicle, silhouette, randomTrafficLivery(), false, modelId);
     }
 
     const lane = pickRandom(LANE_OFFSETS);
@@ -207,8 +211,6 @@ export class TrafficSystem implements GameSystem {
       const vehicle = this.spawn();
       vehicle.position.z = start - i * gap - randomRange(0, isRun ? 7 : 5);
 
-      // Only the first beat is deliberately generous; after that the player is
-      // immediately reading and reacting to traffic.
       if (isRun && i < 2 && Math.abs(vehicle.position.x) < 2.6) {
         vehicle.position.x = vehicle.position.x < 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
       }
