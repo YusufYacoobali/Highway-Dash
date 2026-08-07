@@ -60,7 +60,7 @@ export class GltfBodyProvider implements VehicleBodyProvider {
       : { length: fallback.targetLength, width: 2.4 };
   }
 
-  build({ silhouette, livery, recolor, modelId: rawModelId }: VehicleBodySpec): Group {
+  build({ livery, recolor, modelId: rawModelId }: VehicleBodySpec): Group {
     const modelId = (rawModelId as VehicleModelId | undefined) ?? PLAYER_MODEL_ID;
     const model = this.models.get(modelId);
     if (!model) return new Group();
