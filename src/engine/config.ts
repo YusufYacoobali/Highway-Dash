@@ -36,28 +36,58 @@ export const TRAFFIC = {
   /** Visual lane wander; wide trucks stay almost perfectly centred. */
   laneJitter: 0.16,
   truckLaneJitter: 0.04,
-  /** Start relaxed, then ramp traffic density over roughly a two-minute run. */
-  baseInterval: 2.3,
-  minInterval: 0.82,
-  difficultyRampSeconds: 115,
+  /**
+   * Runs open gently, then density climbs aggressively. The eased spawn curve
+   * stays readable for the first ~20 seconds but should feel frantic by 90s.
+   */
+  baseInterval: 2.05,
+  minInterval: 0.4,
+  difficultyRampSeconds: 92,
   /** Menu traffic stays sparse and decorative. */
   attractInterval: 1.35,
-  /** Multi-car beats are a late-run difficulty spike, not an opening hazard. */
-  doubleSpawnAfter: 80,
-  doubleSpawnChance: 0.07,
+  /** Multi-car beats become common only once the player is settled in. */
+  doubleSpawnAfter: 42,
+  doubleSpawnBaseChance: 0.05,
+  doubleSpawnMaxChance: 0.32,
+  tripleSpawnAfter: 78,
+  tripleSpawnMaxChance: 0.09,
   runPrefillCount: 4,
   attractPrefillCount: 7,
+  /** Nitro impact launch tuning. */
+  ramSideSpeedMin: 8,
+  ramSideSpeedMax: 13,
+  ramLiftMin: 7,
+  ramLiftMax: 11,
+  ramForwardSpeedMin: 18,
+  ramForwardSpeedMax: 27,
 } as const;
 
 export const PICKUPS = {
   runLengthMin: 4,
   runLengthMax: 8,
   spacing: 4.2,
-  arcChance: 0.45,
+  /** Coins now form readable lines on the asphalt rather than floating arcs. */
+  arcChance: 0,
   spawnInterval: 2.1,
   value: 5,
-  height: 1.4,
-  arcHeight: 1.9,
+  /** Coin radius is 0.62, so this places its centre just above the road. */
+  height: 0.68,
+  arcHeight: 0,
+} as const;
+
+export const POLICE = {
+  /** HUD distance at which the chase starts. */
+  startDistanceMeters: 3000,
+  /** Wanted level cannot cool below this once the chase begins. */
+  minimumStars: 2,
+  /** Gain another guaranteed wanted star every additional distance chunk. */
+  starStepMeters: 900,
+  followDistance: 6.4,
+  lateralOffset: 3.2,
+  followRate: 4.8,
+  aggressionRampMeters: 1800,
+  /** Nitro temporarily leaves the pursuit farther behind. */
+  nitroFallbackDistance: 4.5,
 } as const;
 
 export const HEAT = {
@@ -65,8 +95,8 @@ export const HEAT = {
   nearMissesPerStar: 4,
   /** Seconds without a near-miss before the meter cools by one star. */
   cooldownSeconds: 7,
-  /** Seconds pinned at max stars before the cops box you in. */
-  bustSeconds: 9,
+  /** Seconds pinned at max stars before the cops finally box you in. */
+  bustSeconds: 12,
 } as const;
 
 export const SCORING = {
