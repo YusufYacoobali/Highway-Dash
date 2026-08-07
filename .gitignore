@@ -43,3 +43,6 @@ yarn-error.*
 # local verification exports
 .expo-export-check*/
 .expo-verify/
+
+# offline asset pipeline intermediates (only the generated blobs are shipped)
+/build/

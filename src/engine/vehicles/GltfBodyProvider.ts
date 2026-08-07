@@ -1,5 +1,5 @@
 import { Asset } from 'expo-asset';
-import { Box3, Group, Material, Mesh, MeshStandardMaterial, Object3D, Vector3 } from 'three';
+import { Box3, Group, Material, Mesh, MeshStandardMaterial, Object3D, Texture, Vector3 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { VehicleSilhouette } from '@/domain/cars';
@@ -77,10 +77,26 @@ export class GltfBodyProvider implements VehicleBodyProvider {
   }
 }
 
+/**
+ * Reattaches the base colour map the offline step lifted out of the GLB, and
+ * replaces the material values that step left at their glTF defaults.
+ *
+ * Both halves matter. The stripped GLB reports `pbrMetallicRoughness: {}`, so
+ * GLTFLoader applies the spec defaults of metalness 1.0 / roughness 1.0 - a
+ * fully metallic body with no environment map has nothing to reflect and
+ * renders black even under strong lights.
+ */
 async function attachAuthoredTextures(root: Object3D, spec: VehicleModelSpec): Promise<void> {
-  if (!spec.textures?.baseColor) return;
+  const { metalness, roughness, fallbackColor } = spec.finish;
+  let baseColor: Texture | null = null;
 
-  const baseColor = await loadNativeTexture(spec.textures.baseColor, 'srgb');
+  if (spec.textures?.baseColor) {
+    try {
+      baseColor = await loadNativeTexture(spec.textures.baseColor, 'srgb');
+    } catch (error) {
+      console.warn('[HighwayDash] Vehicle base colour map failed to load; using flat paint', error);
+    }
+  }
 
   root.traverse((node) => {
     const mesh = node as Mesh;
@@ -90,15 +106,13 @@ async function attachAuthoredTextures(root: Object3D, spec: VehicleModelSpec): P
       const standard = material as MeshStandardMaterial;
       if (!standard.isMeshStandardMaterial) continue;
 
-      // The extracted PNG is the authored colour/albedo. Keep that exact map,
-      // but do not use the GLB defaults of metalness=1/roughness=1: with no
-      // environment map that makes painted bodywork render almost black.
       standard.map = baseColor;
-      standard.color.set(0xffffff);
+      // White lets the map through unchanged; without a map this is the paint.
+      standard.color.set(baseColor ? 0xffffff : fallbackColor);
       standard.metalnessMap = null;
       standard.roughnessMap = null;
-      standard.metalness = 0.05;
-      standard.roughness = 0.72;
+      standard.metalness = metalness;
+      standard.roughness = roughness;
       standard.needsUpdate = true;
     }
   });

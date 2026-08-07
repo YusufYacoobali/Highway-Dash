@@ -6,8 +6,16 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, flatten, join, prune, simplify, weld } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
+import { buildRawTexture } from './build-vehicle-raw-textures.mjs';
+
 const INPUT_DIR = 'assets/new-models';
 const OUTPUT_DIR = 'assets/game-models';
+/**
+ * The extracted PNGs are a pipeline intermediate, kept outside assets/ so the
+ * ~13 MB of source maps stay out of the shipped bundle. Only the RGBA blob the
+ * runtime actually samples is written to OUTPUT_DIR.
+ */
+const TEXTURE_WORK_DIR = 'build/vehicle-textures';
 const PRESERVE_EXACT_FILE = 'Meshy_AI_Blue_Bubble_Car_0807173120_texture.glb';
 const PRESERVE_PREFIX = 'blueCompressed';
 
@@ -17,6 +25,7 @@ const HEAVY_MODEL_TARGET_TRIANGLES = 45000;
 
 await MeshoptSimplifier.ready;
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
+await fs.mkdir(TEXTURE_WORK_DIR, { recursive: true });
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 const files = (await fs.readdir(INPUT_DIR)).filter((name) => name.toLowerCase().endsWith('.glb'));
@@ -52,9 +61,11 @@ async function buildExactTexturePassThrough(document, output) {
   }
 
   // Remove stale extracted textures before recreating the exact current set.
-  for (const name of await fs.readdir(OUTPUT_DIR)) {
-    if (name.startsWith(`${PRESERVE_PREFIX}_m`) && name.endsWith('.png')) {
-      await fs.rm(path.join(OUTPUT_DIR, name), { force: true });
+  for (const directory of [OUTPUT_DIR, TEXTURE_WORK_DIR]) {
+    for (const name of await fs.readdir(directory)) {
+      if (name.startsWith(`${PRESERVE_PREFIX}_m`)) {
+        await fs.rm(path.join(directory, name), { force: true });
+      }
     }
   }
 
@@ -79,9 +90,20 @@ async function buildExactTexturePassThrough(document, output) {
       if (!bytes) continue;
 
       const filename = `${PRESERVE_PREFIX}_m${materialIndex}_${slot}.png`;
-      const outputPath = path.join(OUTPUT_DIR, filename);
-      await sharp(bytes).ensureAlpha().png({ compressionLevel: 9 }).toFile(outputPath);
-      extracted.push({ materialIndex, materialName: material.getName(), slot, filename });
+      const pngPath = path.join(TEXTURE_WORK_DIR, filename);
+      await sharp(bytes).ensureAlpha().png({ compressionLevel: 9 }).toFile(pngPath);
+
+      const record = { materialIndex, materialName: material.getName(), slot, png: pngPath };
+
+      // Only the base colour is sampled at runtime; the rest are kept as
+      // references so the averaged `finish` values can be re-derived by hand.
+      if (slot === 'baseColor') {
+        const blob = `${PRESERVE_PREFIX}_m${materialIndex}_${slot}.rgba.bin`;
+        record.blob = blob;
+        record.summary = await buildRawTexture(pngPath, path.join(OUTPUT_DIR, blob));
+      }
+
+      extracted.push(record);
       clear(material);
     }
   }
