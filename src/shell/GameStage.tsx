@@ -191,13 +191,18 @@ export const GameStage: React.FC = () => {
 
   const handleTouchStart = useCallback(
     (event: NativeSyntheticEvent<NativeTouchEvent>) => {
-      if (screen !== 'run' || steeringTouchId.current !== null) return;
-      const candidate = event.nativeEvent.changedTouches.find((touch) => !isNitroZone(touch));
+      if (screen !== 'run') return;
+
+      const changedTouches = event.nativeEvent.changedTouches;
+      if (changedTouches.some((touch) => isNitroZone(touch))) handleNitro();
+
+      if (steeringTouchId.current !== null) return;
+      const candidate = changedTouches.find((touch) => !isNitroZone(touch));
       if (!candidate) return;
       steeringTouchId.current = candidate.identifier;
       steerFromTouch(candidate);
     },
-    [isNitroZone, screen, steerFromTouch],
+    [handleNitro, isNitroZone, screen, steerFromTouch],
   );
 
   const handleTouchMove = useCallback(
