@@ -166,11 +166,15 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   }, [car]);
 
   useEffect(() => {
-    console.log('[HighwayDash][GL] mode change', { mode, runToken, paused });
+    console.log('[HighwayDash][GL] mode change', { mode, runToken });
     engineRef.current?.setMode(mode);
     // `runToken` is intentionally a dependency: replaying from the crash screen
     // keeps the same mode but must restart the simulation.
-  }, [mode, runToken, paused]);
+  }, [mode, runToken]);
+
+  useEffect(() => {
+    console.log('[HighwayDash][GL] pause change', { paused });
+  }, [paused]);
 
   useEffect(() => {
     if (!handleRef) return;
