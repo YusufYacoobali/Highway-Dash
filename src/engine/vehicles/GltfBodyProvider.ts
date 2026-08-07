@@ -6,11 +6,11 @@ import type { VehicleSilhouette } from '@/domain/cars';
 import type { VehicleBodyProvider, VehicleBodySpec } from '@/engine/types';
 import { readAssetArrayBuffer } from './readAssetArrayBuffer';
 import {
-  ACTIVE_VEHICLE_SILHOUETTES,
+  ACTIVE_MODEL_POOL,
   MODEL_LIBRARY,
+  PLAYER_MODEL_ID,
   PRESERVE_AUTHORED_MODEL_COLORS,
-  activeModelId,
-  activeModelSpec,
+  fallbackModelSpec,
   type VehicleModelId,
   type VehicleModelSpec,
 } from './vehicleModelConfig';
@@ -22,19 +22,17 @@ interface PreparedModel {
   paintMaterialName: string | null;
 }
 
-/** Loads only the models selected in vehicleModelConfig.ts. */
+/** Loads every model in ACTIVE_MODEL_POOL so they can coexist in one run. */
 export class GltfBodyProvider implements VehicleBodyProvider {
   readonly id = 'gltf';
   readonly ownsGpuResources = false;
 
-  private constructor(private readonly models: Map<VehicleSilhouette, PreparedModel>) {}
+  private constructor(private readonly models: Map<VehicleModelId, PreparedModel>) {}
 
   static async load(): Promise<GltfBodyProvider | null> {
     const loader = new GLTFLoader();
-    const preparedById = new Map<VehicleModelId, PreparedModel>();
-    const activeIds = Array.from(
-      new Set(ACTIVE_VEHICLE_SILHOUETTES.map((silhouette) => activeModelId(silhouette))),
-    );
+    const models = new Map<VehicleModelId, PreparedModel>();
+    const activeIds = Array.from(new Set<VehicleModelId>([PLAYER_MODEL_ID, ...ACTIVE_MODEL_POOL]));
 
     await Promise.all(
       activeIds.map(async (modelId) => {
@@ -43,34 +41,28 @@ export class GltfBodyProvider implements VehicleBodyProvider {
           const asset = Asset.fromModule(spec.module);
           const buffer = await readAssetArrayBuffer(asset);
           const gltf = await loader.parseAsync(buffer, '');
-          preparedById.set(modelId, prepareModel(gltf.scene, spec));
+          models.set(modelId, prepareModel(gltf.scene, spec));
         } catch (error) {
           console.warn(`[HighwayDash] Failed to load vehicle model: ${modelId}`, error);
         }
       }),
     );
 
-    const models = new Map<VehicleSilhouette, PreparedModel>();
-    for (const silhouette of ACTIVE_VEHICLE_SILHOUETTES) {
-      const prepared = preparedById.get(activeModelId(silhouette));
-      if (prepared) models.set(silhouette, prepared);
-    }
-
-    return models.size === ACTIVE_VEHICLE_SILHOUETTES.length
-      ? new GltfBodyProvider(models)
-      : null;
+    return models.size === activeIds.length ? new GltfBodyProvider(models) : null;
   }
 
-  dimensions(silhouette: VehicleSilhouette): { length: number; width: number } {
-    const model = this.models.get(silhouette);
-    const fallback = activeModelSpec(silhouette);
+  dimensions(silhouette: VehicleSilhouette, rawModelId?: string): { length: number; width: number } {
+    const modelId = (rawModelId as VehicleModelId | undefined) ?? PLAYER_MODEL_ID;
+    const model = this.models.get(modelId);
+    const fallback = MODEL_LIBRARY[modelId] ?? fallbackModelSpec(silhouette);
     return model
       ? { length: model.length, width: model.width }
       : { length: fallback.targetLength, width: 2.4 };
   }
 
-  build({ silhouette, livery, recolor }: VehicleBodySpec): Group {
-    const model = this.models.get(silhouette);
+  build({ silhouette, livery, recolor, modelId: rawModelId }: VehicleBodySpec): Group {
+    const modelId = (rawModelId as VehicleModelId | undefined) ?? PLAYER_MODEL_ID;
+    const model = this.models.get(modelId);
     if (!model) return new Group();
 
     const clone = model.prototype.clone(true);
