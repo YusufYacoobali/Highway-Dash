@@ -8,12 +8,11 @@ import { MeshoptSimplifier } from 'meshoptimizer';
 
 const INPUT_DIR = 'assets/new-models';
 const OUTPUT_DIR = 'assets/game-models';
+const PRESERVE_EXACT_FILE = 'Meshy_AI_Blue_Bubble_Car_0807173120_texture.glb';
+const PRESERVE_PREFIX = 'blueCompressed';
 
 // Models already compressed to roughly this range are considered game-ready.
-// Do NOT decimate or weld them again — preserve the authored car shape exactly.
 const MOBILE_READY_MAX_TRIANGLES = 35000;
-
-// Only very heavy source models are simplified, and even then conservatively.
 const HEAVY_MODEL_TARGET_TRIANGLES = 45000;
 
 await MeshoptSimplifier.ready;
@@ -28,18 +27,80 @@ for (const file of files) {
   const input = path.join(INPUT_DIR, file);
   const output = path.join(OUTPUT_DIR, file);
   const document = await io.read(input);
+
+  // This is the currently selected ~30k test car. Preserve its geometry,
+  // authored material values and UVs exactly. The only change is packaging:
+  // embedded images are extracted as lossless PNGs for Expo GL, then removed
+  // from the GLB so GLTFLoader never touches React Native's unsupported Blob
+  // image path. Runtime reattaches the exact same pixels to the exact same UVs.
+  if (file === PRESERVE_EXACT_FILE) {
+    await buildExactTexturePassThrough(document, output);
+    continue;
+  }
+
+  await buildOptimizedFallback(document, output, file);
+}
+
+async function buildExactTexturePassThrough(document, output) {
+  const root = document.getRoot();
+  const beforeTriangles = countTriangles(document);
+  const materials = root.listMaterials();
+
+  // Remove stale extracted textures before recreating the exact current set.
+  for (const name of await fs.readdir(OUTPUT_DIR)) {
+    if (name.startsWith(`${PRESERVE_PREFIX}_m`) && name.endsWith('.png')) {
+      await fs.rm(path.join(OUTPUT_DIR, name), { force: true });
+    }
+  }
+
+  const slots = [
+    ['baseColor', (material) => material.getBaseColorTexture(), (material) => material.setBaseColorTexture(null)],
+    ['normal', (material) => material.getNormalTexture(), (material) => material.setNormalTexture(null)],
+    [
+      'metalRough',
+      (material) => material.getMetallicRoughnessTexture(),
+      (material) => material.setMetallicRoughnessTexture(null),
+    ],
+    ['occlusion', (material) => material.getOcclusionTexture(), (material) => material.setOcclusionTexture(null)],
+    ['emissive', (material) => material.getEmissiveTexture(), (material) => material.setEmissiveTexture(null)],
+  ];
+
+  const extracted = [];
+  for (let materialIndex = 0; materialIndex < materials.length; materialIndex++) {
+    const material = materials[materialIndex];
+    for (const [slot, getter, clear] of slots) {
+      const texture = getter(material);
+      const bytes = texture?.getImage();
+      if (!bytes) continue;
+
+      const filename = `${PRESERVE_PREFIX}_m${materialIndex}_${slot}.png`;
+      const outputPath = path.join(OUTPUT_DIR, filename);
+      await sharp(bytes).ensureAlpha().png({ compressionLevel: 9 }).toFile(outputPath);
+      extracted.push({ materialIndex, materialName: material.getName(), slot, filename });
+      clear(material);
+    }
+  }
+
+  // Only prune now-unreferenced embedded image resources. No geometry/material
+  // replacement, flattening, joining, welding, decimation or vertex-colour bake.
+  await document.transform(prune());
+  await io.write(output, document);
+
+  const afterTriangles = countTriangles(document);
+  const stat = await fs.stat(output);
+  console.log(
+    `[vehicle-exact] ${path.basename(output)}: ${beforeTriangles.toLocaleString()} -> ${afterTriangles.toLocaleString()} tris, ${(stat.size / 1024).toFixed(0)} KB, extracted=${JSON.stringify(extracted)}`,
+  );
+}
+
+async function buildOptimizedFallback(document, output, file) {
   const root = document.getRoot();
   const buffer = root.listBuffers()[0] ?? document.createBuffer('game-buffer');
-
   const beforeTriangles = countTriangles(document);
   const alreadyMobileReady = beforeTriangles <= MOBILE_READY_MAX_TRIANGLES;
 
-  // Bake the authored base-colour texture into vertex colours. This keeps the
-  // painted look while avoiding React Native / Expo GL image-texture decoding.
   await bakeBaseColorToVertexColors(document, buffer);
 
-  // One simple material for every primitive = cheap clones and very few draw
-  // calls. Vertex colours carry the appearance, so no texture maps are needed.
   const gameMaterial = document
     .createMaterial('mobile-vertex-color')
     .setBaseColorFactor([1, 1, 1, 1])
@@ -52,13 +113,9 @@ for (const file of files) {
   }
 
   if (alreadyMobileReady) {
-    // Important: a hand-compressed ~30k car is already where we want it.
-    // No weld() and no simplify(): keep every remaining silhouette/detail edge.
     await document.transform(dedup(), prune());
   } else {
-    // Heavy Meshy sources still need geometry reduction before runtime.
     await document.transform(dedup(), weld({ toleranceNormal: 0.05 }), prune());
-
     const currentTriangles = countTriangles(document);
     if (currentTriangles > HEAVY_MODEL_TARGET_TRIANGLES * 1.15) {
       const ratio = Math.max(0.05, Math.min(0.95, HEAVY_MODEL_TARGET_TRIANGLES / currentTriangles));
@@ -73,8 +130,6 @@ for (const file of files) {
     }
   }
 
-  // Flatten and join after geometry decisions. This preserves the visible
-  // geometry while collapsing compatible primitives into a cheaper runtime mesh.
   await document.transform(flatten(), join({ keepMeshes: false }), dedup(), prune());
 
   for (const material of root.listMaterials()) {
@@ -86,7 +141,6 @@ for (const file of files) {
       .setEmissiveTexture(null);
   }
   await document.transform(prune());
-
   await io.write(output, document);
 
   const afterTriangles = countTriangles(document);
