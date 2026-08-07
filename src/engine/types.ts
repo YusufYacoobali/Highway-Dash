@@ -105,6 +105,12 @@ export interface VehicleMeta {
   speed: number;
   /** Traffic only: whether the near-miss check has already run for this car. */
   passed: boolean;
+  /** Nitro collisions turn traffic into temporary launched physics props. */
+  rammed?: boolean;
+  ramVelocityX?: number;
+  ramVelocityY?: number;
+  ramVelocityZ?: number;
+  ramSpin?: number;
 }
 
 export type VehicleObject = Group & { userData: VehicleMeta };
