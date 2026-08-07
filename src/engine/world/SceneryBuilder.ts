@@ -14,7 +14,7 @@ const TREE_COUNT = 16;
 const TREE_SPACING = 15;
 const LEAF_COLORS = [0x3f9e33, 0x4fbf3f, 0x358c2e];
 
-/** Roadside trees. They wrap with a fresh lateral offset so the loop hides. */
+/** Roadside low-poly scenery. Themes recolor these shared silhouettes cheaply. */
 export function buildScenery(scene: Scene): ScrollBand {
   const trunkMaterial = new MeshLambertMaterial({ color: 0x8b5a2b });
   const leafMaterials = LEAF_COLORS.map((color) => new MeshLambertMaterial({ color }));
@@ -28,11 +28,15 @@ export function buildScenery(scene: Scene): ScrollBand {
 
   for (let i = 0; i < TREE_COUNT; i++) {
     const tree = new Group();
+    tree.name = 'world-tree';
 
     const trunk = new Mesh(trunkGeometry, trunkMaterial);
+    trunk.name = 'world-tree-trunk';
     trunk.position.y = 1.1;
 
     const leaves = new Mesh(leafGeometry, leafMaterials[i % leafMaterials.length]);
+    leaves.name = 'world-tree-leaves';
+    leaves.userData.paletteIndex = i % leafMaterials.length;
     leaves.position.y = 3.6;
     leaves.scale.set(1, 1.15, 1);
 
