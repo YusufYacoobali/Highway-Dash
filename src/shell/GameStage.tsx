@@ -155,9 +155,9 @@ export const GameStage: React.FC = () => {
   const handleCoinCollected = useCallback(() => feedback.play('coin'), [feedback]);
 
   const handleTrafficRammed = useCallback(
-    ({ combo }: EngineEvents['trafficRammed']) => {
-      feedback.play('ram');
-      pushRamPop(combo);
+    ({ smashCount, grace }: EngineEvents['trafficRammed']) => {
+      feedback.play(grace ? 'nearMiss' : 'ram');
+      pushRamPop(smashCount, grace);
     },
     [feedback],
   );
