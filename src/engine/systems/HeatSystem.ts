@@ -1,4 +1,4 @@
-import { HEAT } from '@/engine/config';
+import { HEAT, POLICE, SCORING } from '@/engine/config';
 import type { GameSystem, RunState, SystemContext } from '@/engine/types';
 
 export interface HeatObserver {
@@ -8,9 +8,9 @@ export interface HeatObserver {
 }
 
 /**
- * The wanted meter. Chaining near-misses raises heat, backing off cools it, and
- * sitting at five stars long enough ends the run — the risk/reward dial that
- * turns a dodging game into a scoring one.
+ * The wanted meter. Near-misses raise heat organically; once the 3 km police
+ * chase starts the run also gets a minimum wanted level that rises with
+ * distance, so the pursuit visibly escalates instead of cooling away.
  */
 export class HeatSystem implements GameSystem {
   readonly name = 'heat';
@@ -20,9 +20,17 @@ export class HeatSystem implements GameSystem {
   update({ state, dt }: SystemContext): void {
     if (state.mode !== 'run' || state.crashed) return;
 
+    const minimumStars = this.policeMinimumStars(state);
+    if (state.stars < minimumStars) {
+      state.stars = minimumStars;
+      state.starProgress = 0;
+      state.wantedPeak = Math.max(state.wantedPeak, state.stars);
+      this.observer.onStarGained(state.stars);
+    }
+
     state.secondsSinceNearMiss += dt;
 
-    if (state.secondsSinceNearMiss > HEAT.cooldownSeconds && state.stars > 0) {
+    if (state.secondsSinceNearMiss > HEAT.cooldownSeconds && state.stars > minimumStars) {
       state.stars -= 1;
       state.starProgress = 0;
       state.secondsSinceNearMiss = 0;
@@ -44,5 +52,15 @@ export class HeatSystem implements GameSystem {
     state.stars += 1;
     state.wantedPeak = Math.max(state.wantedPeak, state.stars);
     this.observer.onStarGained(state.stars);
+  }
+
+  private policeMinimumStars(state: RunState): number {
+    const distanceMeters = state.distance * SCORING.distanceScale;
+    if (distanceMeters < POLICE.startDistanceMeters) return 0;
+
+    const extra = Math.floor(
+      (distanceMeters - POLICE.startDistanceMeters) / POLICE.starStepMeters,
+    );
+    return Math.min(HEAT.maxStars, POLICE.minimumStars + extra);
   }
 }
