@@ -43,7 +43,6 @@ export class RunDirectorSystem implements GameSystem {
   readonly name = 'runDirector';
 
   private beatIndex = 0;
-  private lastTheme: WorldThemeId = 'sunset';
 
   constructor(private readonly observer: RunDirectorObserver) {}
 
@@ -53,7 +52,6 @@ export class RunDirectorSystem implements GameSystem {
     const nextTheme = themeForElapsed(state.elapsed, state.event);
     if (nextTheme !== state.theme) {
       state.theme = nextTheme;
-      this.lastTheme = nextTheme;
       this.observer.onThemeChanged(nextTheme);
     }
 
@@ -65,7 +63,6 @@ export class RunDirectorSystem implements GameSystem {
     state.intensity = clamp(baseDifficulty * 0.72 + eventPressure, 0, 1);
     state.trafficIntensity = clamp(0.48 + baseDifficulty * 0.42 + eventPressure * 0.6, 0.38, 1.08);
 
-    // Wanted level amplifies an authored police beat instead of silently killing the player.
     state.policePressure = clamp((state.stars - 1) / 4, 0, 1);
     if (state.stars >= 3) state.trafficIntensity = Math.min(1.08, state.trafficIntensity + 0.08);
 
@@ -74,7 +71,6 @@ export class RunDirectorSystem implements GameSystem {
 
   reset({ state }: Omit<SystemContext, 'dt' | 'scroll'>): void {
     this.beatIndex = 0;
-    this.lastTheme = 'sunset';
     state.event = 'cruise';
     state.eventRemaining = state.mode === 'run' ? OPENING_BEATS[0].seconds : 9999;
     state.eventSerial = 0;
@@ -92,7 +88,6 @@ export class RunDirectorSystem implements GameSystem {
       return;
     }
 
-    // Endless mode always inserts recovery after a spectacle beat.
     if (state.event !== 'cruise') {
       this.start(state, 'cruise', RUN_DIRECTOR.recoverySeconds);
       return;
@@ -116,7 +111,6 @@ export class RunDirectorSystem implements GameSystem {
     const nextTheme = themeForElapsed(state.elapsed, event);
     if (nextTheme !== state.theme) {
       state.theme = nextTheme;
-      this.lastTheme = nextTheme;
       this.observer.onThemeChanged(nextTheme);
     }
 
