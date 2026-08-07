@@ -5,8 +5,6 @@ export interface RendererHandle {
   renderer: WebGLRenderer;
   width: number;
   height: number;
-  /** Must be called once per frame *before* `renderer.render`. */
-  beginFrame(): void;
   /** Must be called once per frame after `renderer.render`. */
   present(): void;
   dispose(): void;
@@ -70,22 +68,8 @@ export function createRenderer(
     renderer,
     width,
     height,
-    /**
-     * Re-points the context at expo-gl's default framebuffer.
-     *
-     * three caches which framebuffer is bound and skips `bindFramebuffer` when
-     * it believes nothing changed. `gl.endFrameEXP()` presents by rebinding on
-     * expo-gl's side, which three never observes — so from the second frame
-     * onwards three draws into a target that is no longer being displayed, and
-     * the scene appears frozen while the simulation keeps running.
-     *
-     * The rebind is issued straight against the context rather than through
-     * `renderer.resetState()`. That leaves three's cache accurate — null really
-     * is bound again — while touching none of the other cached state. Going via
-     * `resetState()` also clears depth-test, VAO and texture bindings, which
-     * lets the sky dome paint over the whole scene.
-     */
-    beginFrame: () => gl.bindFramebuffer(gl.FRAMEBUFFER, null),
+    // expo-gl owns the default framebuffer. Render normally with three.js,
+    // then explicitly present the completed frame to the native GL surface.
     present: () => gl.endFrameEXP(),
     dispose: () => {
       renderer.dispose();
