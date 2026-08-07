@@ -2,8 +2,8 @@ import { CylinderGeometry, Mesh, MeshLambertMaterial, Scene } from 'three';
 
 import { ObjectPool } from '@/core/ObjectPool';
 import { randomRange } from '@/core/math';
-import { DESPAWN_Z, LANE_OFFSETS, PICKUPS, SPAWN_Z } from '@/engine/config';
-import type { GameSystem, RunEventId, SystemContext } from '@/engine/types';
+import { DESPAWN_Z, laneOffsetsFor, PICKUPS, SPAWN_Z } from '@/engine/config';
+import type { GameSystem, LaneCount, RunEventId, SystemContext } from '@/engine/types';
 
 const COIN_SPIN_RATE = 5;
 const COLLECT_BEHIND = -2;
@@ -53,7 +53,7 @@ export class PickupSystem implements GameSystem {
       this.spawnTimer -= ctx.dt;
       if (this.spawnTimer <= 0) {
         this.spawnTimer = intervalForEvent(ctx.state.event);
-        this.spawnRun(ctx.state.event, ctx.state.eventVariant);
+        this.spawnRun(ctx.state.event, ctx.state.eventVariant, ctx.state.laneCount);
       }
     }
     this.collectStep(ctx);
@@ -64,7 +64,7 @@ export class PickupSystem implements GameSystem {
     this.spawnTimer = PICKUPS.spawnInterval;
 
     for (let i = 0; i < 3; i++) {
-      const run = this.spawnRun('cruise', 0);
+      const run = this.spawnRun('cruise', 0, 4);
       for (const coin of run) coin.position.z -= i * 38;
     }
   }
@@ -114,9 +114,10 @@ export class PickupSystem implements GameSystem {
     }
   }
 
-  private spawnRun(event: RunEventId, variant: number): Mesh[] {
-    const laneIndex = Math.floor(Math.random() * LANE_OFFSETS.length);
-    const lane = LANE_OFFSETS[laneIndex];
+  private spawnRun(event: RunEventId, variant: number, laneCount: LaneCount): Mesh[] {
+    const lanes = laneOffsetsFor(laneCount);
+    const laneIndex = Math.floor(Math.random() * lanes.length);
+    const lane = lanes[laneIndex] ?? 0;
     const coinRush = event === 'coinRush';
     const count = Math.round(
       randomRange(
@@ -125,16 +126,19 @@ export class PickupSystem implements GameSystem {
       ),
     );
     const spacing = coinRush ? (variant === 3 ? 2.65 : 3.05) : PICKUPS.spacing;
-    const direction = laneIndex <= 1 ? 1 : -1;
-    const neighbourIndex = Math.max(0, Math.min(LANE_OFFSETS.length - 1, laneIndex + direction));
-    const neighbour = LANE_OFFSETS[neighbourIndex];
+    const direction = laneIndex <= Math.floor((lanes.length - 1) / 2) ? 1 : -1;
+    const neighbourIndex = Math.max(0, Math.min(lanes.length - 1, laneIndex + direction));
+    const neighbour = lanes[neighbourIndex] ?? lane;
     const run: Mesh[] = [];
 
     for (let i = 0; i < count; i++) {
       const coin = this.pool.acquire();
       const t = count > 1 ? i / (count - 1) : 0;
-      const x = coinRush ? coinRushX(variant, t, i, lane, neighbour) : lane;
-      const y = coinRush && variant === 3 ? PICKUPS.height + Math.sin(t * Math.PI * 3) * 0.18 : PICKUPS.height;
+      const x = coinRush ? coinRushX(variant, t, i, lane, neighbour, lanes) : lane;
+      const y =
+        coinRush && variant === 3
+          ? PICKUPS.height + Math.sin(t * Math.PI * 3) * 0.18
+          : PICKUPS.height;
       coin.position.set(x, y, SPAWN_Z - i * spacing);
       this.active.push(coin);
       run.push(coin);
@@ -148,11 +152,18 @@ export class PickupSystem implements GameSystem {
   }
 }
 
-function coinRushX(variant: number, t: number, index: number, lane: number, neighbour: number): number {
+function coinRushX(
+  variant: number,
+  t: number,
+  index: number,
+  lane: number,
+  neighbour: number,
+  lanes: readonly number[],
+): number {
   switch (variant % 4) {
     case 1: {
-      const left = LANE_OFFSETS[0];
-      const right = LANE_OFFSETS[LANE_OFFSETS.length - 1];
+      const left = lanes[0] ?? -4;
+      const right = lanes[lanes.length - 1] ?? 4;
       return left + (right - left) * (0.5 - Math.cos(t * Math.PI * 2) * 0.5);
     }
     case 2:
@@ -167,7 +178,7 @@ function coinRushX(variant: number, t: number, index: number, lane: number, neig
 
 function intervalForEvent(event: RunEventId): number {
   if (event === 'coinRush') return 0.72;
-  if (event === 'nitroRush') return 1.0;
-  if (event === 'roadblock' || event === 'construction') return 1.85;
+  if (event === 'nitroRush') return 0.92;
+  if (event === 'roadblock' || event === 'construction' || event === 'laneSqueeze') return 1.65;
   return PICKUPS.spawnInterval;
 }
