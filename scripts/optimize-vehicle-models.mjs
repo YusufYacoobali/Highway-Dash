@@ -167,3 +167,5 @@ function countTriangles(document) {
   }
   return triangles;
 }
+
+// Keep this branch change until the generated mobile GLBs are committed.
