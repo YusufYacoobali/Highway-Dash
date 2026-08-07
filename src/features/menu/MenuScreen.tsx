@@ -17,10 +17,6 @@ export interface MenuScreenProps {
   onMissions(): void;
 }
 
-/**
- * The title screen uses generated art so the first impression matches the
- * polished hyper-casual reference rather than depending on the live GL scene.
- */
 export const MenuScreen: React.FC<MenuScreenProps> = ({
   coins,
   gems,
@@ -33,83 +29,60 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      <Image
-        source={{ uri: MENU_BACKGROUND_URI }}
-        resizeMode="cover"
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <Image source={{ uri: MENU_BACKGROUND_URI }} resizeMode="cover" style={StyleSheet.absoluteFill} pointerEvents="none" />
 
       <LinearGradient
         pointerEvents="none"
-        colors={[
-          'rgba(4,29,67,0.08)',
-          'rgba(4,29,67,0)',
-          'rgba(5,20,47,0.05)',
-          'rgba(4,16,38,0.70)',
-        ]}
-        locations={[0, 0.34, 0.60, 1]}
+        colors={['rgba(4,20,44,0.04)', 'rgba(4,20,44,0)', 'rgba(4,16,38,0.18)', 'rgba(4,13,30,0.84)']}
+        locations={[0, 0.38, 0.62, 1]}
         style={StyleSheet.absoluteFill}
       />
 
       <View style={[styles.currencyRow, { top: insets.top + spacing.sm }]}>
-        <CoinChip value={coins} />
-        <GemChip value={gems} />
+        <CoinChip size="sm" value={coins} />
+        <GemChip size="sm" value={gems} />
       </View>
 
-      <View style={[styles.titleBlock, { top: insets.top + 58 }]} pointerEvents="none">
+      <View style={[styles.titleBlock, { top: insets.top + 54 }]} pointerEvents="none">
         <Image source={{ uri: MENU_LOGO_URI }} resizeMode="contain" style={styles.logo} />
       </View>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-        <ChunkyButton
-          onPress={onPlay}
-          tone="green"
-          height={92}
-          depth={9}
-          shine
-          pulse
-          accessibilityLabel="Play"
-        >
-          <AppText variant="displayL" emboss="rgba(20,70,10,0.55)" style={styles.playText}>
-            PLAY
-          </AppText>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
+        <ChunkyButton onPress={onPlay} tone="green" height={72} shine pulse accessibilityLabel="Play">
+          <AppText variant="displayM" style={styles.playText}>PLAY</AppText>
         </ChunkyButton>
 
-        <View style={styles.navRow}>
-          <NavTile label="GARAGE" onPress={onGarage} />
-          <NavTile label="MISSIONS" onPress={onMissions} badge={claimableMissions} />
+        <View style={styles.navBar}>
+          <NavAction label="GARAGE" onPress={onGarage} />
+          <View style={styles.navDivider} />
+          <NavAction label="MISSIONS" onPress={onMissions} badge={claimableMissions} />
         </View>
 
-        <AppText variant="body" align="center" color={alpha.white85} style={styles.hint}>
-          Drag anywhere to steer · tap ⚡ for nitro
+        <AppText variant="micro" align="center" color={alpha.white55}>
+          DRAG TO STEER · TAP ⚡ TO SMASH THROUGH TRAFFIC
         </AppText>
       </View>
     </View>
   );
 };
 
-interface NavTileProps {
+interface NavActionProps {
   label: string;
   onPress(): void;
   badge?: number;
 }
 
-const NavTile: React.FC<NavTileProps> = ({ label, onPress, badge = 0 }) => (
+const NavAction: React.FC<NavActionProps> = ({ label, onPress, badge = 0 }) => (
   <Pressable
     accessibilityRole="button"
     accessibilityLabel={label}
     onPress={onPress}
-    style={({ pressed }) => [styles.navTile, pressed && styles.navTilePressed]}
+    style={({ pressed }) => [styles.navAction, pressed && styles.navPressed]}
   >
-    <AppText variant="bodyStrong" color={palette.white} numberOfLines={1}>
-      {label}
-    </AppText>
+    <AppText variant="bodyStrong" color={palette.white}>{label}</AppText>
     {badge > 0 ? (
       <View style={styles.badge}>
-        <AppText variant="micro" color={palette.ink}>
-          {badge}
-        </AppText>
+        <AppText variant="micro" color={palette.ink}>{badge}</AppText>
       </View>
     ) : null}
   </Pressable>
@@ -122,7 +95,7 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 14,
+    gap: 8,
     zIndex: 3,
   },
   titleBlock: {
@@ -132,48 +105,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
   },
-  logo: {
-    width: '100%',
-    height: 245,
-  },
+  logo: { width: '100%', height: 225 },
   footer: {
     marginTop: 'auto',
-    paddingHorizontal: 26,
-    gap: spacing.md,
+    paddingHorizontal: 24,
+    gap: 12,
     zIndex: 3,
   },
-  playText: { fontSize: 48, lineHeight: 54 },
-  navRow: { flexDirection: 'row', gap: 10 },
-  navTile: {
-    flex: 1,
-    height: 58,
+  playText: { fontSize: 34, lineHeight: 40 },
+  navBar: {
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: radii.lg,
-    backgroundColor: 'rgba(16,39,74,0.86)',
-    borderWidth: 3,
-    borderColor: alpha.white45,
+    backgroundColor: 'rgba(5,16,34,0.66)',
+    borderWidth: 1,
+    borderColor: alpha.white08,
+  },
+  navAction: {
+    flex: 1,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
   },
-  navTilePressed: {
-    backgroundColor: alpha.navyGlassStrong,
-    transform: [{ scale: 0.96 }],
-  },
+  navPressed: { opacity: 0.62 },
+  navDivider: { width: 1, height: 22, backgroundColor: alpha.white14 },
   badge: {
     position: 'absolute',
-    top: 3,
-    right: 5,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
+    top: 7,
+    right: 18,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     paddingHorizontal: 5,
     backgroundColor: palette.gold,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  hint: {
-    textShadowColor: 'rgba(6,20,40,0.85)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
   },
 });
