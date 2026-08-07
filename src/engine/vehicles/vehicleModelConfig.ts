@@ -8,30 +8,31 @@ import type { VehicleSilhouette } from '@/domain/cars';
  * models are guaranteed to appear during the same run.
  */
 export type VehicleModelId = 'azureVelocity' | 'blueBubble' | 'redBubble';
+export type VehicleForwardAxis = '+x' | '-x' | '+z' | '-z';
 
 export interface VehicleModelSpec {
   module: number;
   /** Engine-space length before the global vehicle scale is applied. */
   targetLength: number;
-  /** Rotate the authored model so its nose faces forward down the highway. */
-  yaw: number;
+  /** Direction the authored car nose points before engine normalisation. */
+  forwardAxis: VehicleForwardAxis;
 }
 
 export const MODEL_LIBRARY: Record<VehicleModelId, VehicleModelSpec> = {
   azureVelocity: {
     module: require('../../../assets/new-models/Meshy_AI_Azure_Velocity_0807150759_texture.glb'),
     targetLength: 5.2,
-    yaw: Math.PI,
+    forwardAxis: '-x',
   },
   blueBubble: {
     module: require('../../../assets/new-models/Meshy_AI_Blue_Bubble_Car_0807145213_texture.glb'),
     targetLength: 4.9,
-    yaw: Math.PI,
+    forwardAxis: '-x',
   },
   redBubble: {
     module: require('../../../assets/new-models/blue_bubble_car_red.glb'),
     targetLength: 4.9,
-    yaw: Math.PI,
+    forwardAxis: '-x',
   },
 };
 
@@ -48,7 +49,7 @@ export const ACTIVE_MODEL_POOL: readonly VehicleModelId[] = [
 /** Player car for this temporary model-testing setup. */
 export const PLAYER_MODEL_ID: VehicleModelId = 'azureVelocity';
 
-/** Keep the authored Meshy materials while evaluating the models. */
+/** Keep the authored Meshy materials and baked textures while evaluating them. */
 export const PRESERVE_AUTHORED_MODEL_COLORS = true;
 
 export function activeModelIdAt(index: number): VehicleModelId {
