@@ -36,16 +36,18 @@ export const MODEL_LIBRARY: Record<VehicleModelId, VehicleModelSpec> = {
 };
 
 /**
- * THIS is the main test switch. Change only these values to swap models.
- * All rendered player/traffic GLBs currently come from assets/new-models.
- *
- * Example: set every entry to 'azureVelocity' to stress-test one model only.
+ * FASTEST TEST SWITCH:
+ * Set to one model ID to force EVERY player + traffic car to that GLB.
+ * Set back to null to use ACTIVE_VEHICLE_MODEL_MAP below.
  */
+export const FORCE_SINGLE_MODEL: VehicleModelId | null = null;
+
+/** Mixed test layout. All three models appear during normal play. */
 export const ACTIVE_VEHICLE_MODEL_MAP: Record<VehicleSilhouette, VehicleModelId> = {
   sports: 'azureVelocity',
   sedan: 'blueBubble',
   hatch: 'redBubble',
-  suv: 'blueBubble',
+  suv: 'azureVelocity',
   truck: 'redBubble',
 };
 
@@ -56,6 +58,10 @@ export const ACTIVE_VEHICLE_SILHOUETTES = Object.keys(
   ACTIVE_VEHICLE_MODEL_MAP,
 ) as VehicleSilhouette[];
 
+export function activeModelId(silhouette: VehicleSilhouette): VehicleModelId {
+  return FORCE_SINGLE_MODEL ?? ACTIVE_VEHICLE_MODEL_MAP[silhouette];
+}
+
 export function activeModelSpec(silhouette: VehicleSilhouette): VehicleModelSpec {
-  return MODEL_LIBRARY[ACTIVE_VEHICLE_MODEL_MAP[silhouette]];
+  return MODEL_LIBRARY[activeModelId(silhouette)];
 }
