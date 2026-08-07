@@ -3,7 +3,14 @@ import type { Scene } from 'three';
 import { ObjectPool } from '@/core/ObjectPool';
 import { clamp, randomRange } from '@/core/math';
 import type { VehicleSilhouette } from '@/domain/cars';
-import { DESPAWN_Z, HEAT, LANE_OFFSETS, SPAWN_Z, TRAFFIC } from '@/engine/config';
+import {
+  DESPAWN_Z,
+  HEAT,
+  LANE_OFFSETS,
+  laneOffsetsFor,
+  SPAWN_Z,
+  TRAFFIC,
+} from '@/engine/config';
 import type { GameSystem, SystemContext, VehicleObject } from '@/engine/types';
 import { randomTrafficLivery, VehicleWorkshop } from '@/engine/vehicles/VehicleWorkshop';
 import { activeModelIdAt } from '@/engine/vehicles/vehicleModelConfig';
@@ -11,12 +18,12 @@ import { activeModelIdAt } from '@/engine/vehicles/vehicleModelConfig';
 export interface TrafficObserver {
   onNearMiss(): void;
   onImpact(): void;
-  onRam(): void;
+  onRam(grace: boolean): void;
 }
 
 const TEST_TRAFFIC_SILHOUETTE: VehicleSilhouette = 'hatch';
 
-/** Pattern-driven traffic with multiple fair variants per authored event. */
+/** Pattern-driven traffic that becomes genuinely busy later without removing escape routes. */
 export class TrafficSystem implements GameSystem {
   readonly name = 'traffic';
 
@@ -27,6 +34,7 @@ export class TrafficSystem implements GameSystem {
   private lastEventSerial = -1;
   private setPieceDelay = -1;
   private highHeatRoadblockReady = true;
+  private lanes: readonly number[] = LANE_OFFSETS;
 
   constructor(
     private readonly scene: Scene,
@@ -64,7 +72,8 @@ export class TrafficSystem implements GameSystem {
     this.lastEventSerial = ctx.state.eventSerial;
     this.setPieceDelay = -1;
     this.highHeatRoadblockReady = true;
-    this.spawnTimer = ctx.state.mode === 'run' ? 1.05 : 0.7;
+    this.lanes = LANE_OFFSETS;
+    this.spawnTimer = ctx.state.mode === 'run' ? 0.95 : 0.45;
     this.prefill(ctx.state.mode === 'run');
   }
 
@@ -73,14 +82,18 @@ export class TrafficSystem implements GameSystem {
   }
 
   private spawnStep({ state, dt }: SystemContext): void {
-    const maxActive = state.mode === 'run' ? TRAFFIC.maxActiveRun : TRAFFIC.maxActiveAttract;
+    this.lanes = laneOffsetsFor(state.laneCount);
+    const maxActive =
+      state.mode === 'run'
+        ? maxActiveForRun(state.elapsed, state.nitroRemaining > 0)
+        : TRAFFIC.maxActiveAttract;
 
     if (state.mode === 'run' && state.stars < HEAT.roadblocksAt) this.highHeatRoadblockReady = true;
     if (
       state.mode === 'run' &&
       state.stars >= HEAT.roadblocksAt &&
       this.highHeatRoadblockReady &&
-      this.active.length <= maxActive - 3
+      this.active.length <= maxActive - Math.max(2, this.lanes.length - 1)
     ) {
       this.spawnRoadblock(maxActive, Math.floor(Math.random() * 4));
       this.highHeatRoadblockReady = false;
@@ -88,7 +101,10 @@ export class TrafficSystem implements GameSystem {
 
     if (state.mode === 'run' && state.eventSerial !== this.lastEventSerial) {
       this.lastEventSerial = state.eventSerial;
-      this.setPieceDelay = state.event === 'roadblock' || state.event === 'construction' ? randomRange(0.75, 1.25) : -1;
+      this.setPieceDelay =
+        state.event === 'roadblock' || state.event === 'construction' || state.event === 'laneSqueeze'
+          ? randomRange(0.7, 1.15)
+          : -1;
     }
 
     if (this.setPieceDelay >= 0) {
@@ -97,6 +113,7 @@ export class TrafficSystem implements GameSystem {
         this.setPieceDelay = -1;
         if (state.event === 'roadblock') this.spawnRoadblock(maxActive, state.eventVariant);
         else if (state.event === 'construction') this.spawnConstructionGate(maxActive, state.eventVariant);
+        else if (state.event === 'laneSqueeze') this.spawnThreeLaneWelcome(maxActive, state.eventVariant);
       }
     }
 
@@ -104,21 +121,33 @@ export class TrafficSystem implements GameSystem {
     if (this.spawnTimer > 0) return;
 
     if (this.active.length >= maxActive) {
-      this.spawnTimer = state.mode === 'run' ? 0.5 : TRAFFIC.attractInterval;
+      this.spawnTimer = state.mode === 'run' ? 0.34 : TRAFFIC.attractInterval;
       return;
     }
 
     if (state.mode === 'attract') {
       this.spawnTimer = TRAFFIC.attractInterval;
       this.spawn();
+      if (this.active.length <= maxActive - 2 && Math.random() < 0.38) this.spawnPair(-5);
       return;
     }
 
     const difficulty = clamp(state.elapsed / TRAFFIC.difficultyRampSeconds, 0, 1);
+    const lateDensity = clamp((state.elapsed - 55) / 110, 0, 1);
     const base = TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * difficulty;
-    const pressureFactor = 1.25 - state.trafficIntensity * 0.35;
-    const recoveryFactor = state.event === 'cruise' ? 1.12 : state.event === 'coinRush' ? 1.22 : 1;
-    this.spawnTimer = Math.max(TRAFFIC.minInterval, base * pressureFactor * recoveryFactor);
+    const pressureFactor = 1.24 - state.trafficIntensity * 0.34;
+    const recoveryFactor =
+      state.event === 'cruise'
+        ? 1.08 - lateDensity * 0.06
+        : state.event === 'coinRush'
+          ? 1.13
+          : 1;
+    const lateFactor = 1 - lateDensity * 0.24;
+    const nitroFactor = state.nitroRemaining > 0 ? 0.54 : 1;
+    this.spawnTimer = Math.max(
+      TRAFFIC.minInterval,
+      base * pressureFactor * recoveryFactor * lateFactor * nitroFactor,
+    );
 
     this.spawn();
 
@@ -137,10 +166,19 @@ export class TrafficSystem implements GameSystem {
     if (
       state.elapsed > TRAFFIC.tripleSpawnAfter &&
       state.event !== 'cruise' &&
-      this.active.length <= maxActive - 3 &&
+      this.active.length <= maxActive - Math.max(2, this.lanes.length - 1) &&
       Math.random() < TRAFFIC.tripleSpawnMaxChance * difficulty
     ) {
       this.spawnWallWithGap();
+    }
+
+    if (
+      state.elapsed > 145 &&
+      state.nitroRemaining <= 0 &&
+      this.active.length <= maxActive - 2 &&
+      Math.random() < 0.07 + lateDensity * 0.05
+    ) {
+      this.spawnPair(-13);
     }
   }
 
@@ -170,8 +208,14 @@ export class TrafficSystem implements GameSystem {
 
         if (dz > -TRAFFIC.playerHalfLength && dz < TRAFFIC.playerHalfLength && dx < halfWidth) {
           if (state.nitroRemaining > 0) {
-            this.launchFromNitro(vehicle, player.position.x, state);
-            this.observer.onRam();
+            this.launchVehicle(vehicle, player.position.x, state, false);
+            this.observer.onRam(false);
+            continue;
+          }
+
+          if (state.nitroGraceRemaining > 0) {
+            this.launchVehicle(vehicle, player.position.x, state, true);
+            this.observer.onRam(true);
             continue;
           }
 
@@ -189,21 +233,25 @@ export class TrafficSystem implements GameSystem {
     }
   }
 
-  private launchFromNitro(
+  private launchVehicle(
     vehicle: VehicleObject,
     playerX: number,
     state: SystemContext['state'],
+    grace: boolean,
   ): void {
     const relative = vehicle.position.x - playerX;
     const side = relative === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(relative);
+    const force = grace ? 0.68 : 1;
 
     vehicle.userData.rammed = true;
     vehicle.userData.passed = true;
-    vehicle.userData.ramVelocityX = side * randomRange(TRAFFIC.ramSideSpeedMin, TRAFFIC.ramSideSpeedMax);
-    vehicle.userData.ramVelocityY = randomRange(TRAFFIC.ramLiftMin, TRAFFIC.ramLiftMax);
-    vehicle.userData.ramVelocityZ = -randomRange(TRAFFIC.ramForwardSpeedMin, TRAFFIC.ramForwardSpeedMax);
-    vehicle.userData.ramSpin = side * randomRange(7.5, 12.5);
-    state.cameraShake = Math.max(state.cameraShake, 2.5);
+    vehicle.userData.ramVelocityX =
+      side * randomRange(TRAFFIC.ramSideSpeedMin, TRAFFIC.ramSideSpeedMax) * force;
+    vehicle.userData.ramVelocityY = randomRange(TRAFFIC.ramLiftMin, TRAFFIC.ramLiftMax) * force;
+    vehicle.userData.ramVelocityZ =
+      -randomRange(TRAFFIC.ramForwardSpeedMin, TRAFFIC.ramForwardSpeedMax) * force;
+    vehicle.userData.ramSpin = side * randomRange(7.5, 12.5) * force;
+    state.cameraShake = Math.max(state.cameraShake, grace ? 0.8 : 2.8);
   }
 
   private updateRammed(vehicle: VehicleObject, dt: number): void {
@@ -224,8 +272,9 @@ export class TrafficSystem implements GameSystem {
   private spawn(laneIndex?: number, zOffset = 0): VehicleObject {
     const vehicle = this.pool.acquire();
     const lane = laneIndex ?? this.pickOpenLane();
+    const laneX = this.lanes[lane] ?? this.lanes[Math.floor(this.lanes.length / 2)] ?? 0;
     vehicle.position.set(
-      LANE_OFFSETS[lane] + randomRange(-TRAFFIC.laneJitter, TRAFFIC.laneJitter),
+      laneX + randomRange(-TRAFFIC.laneJitter, TRAFFIC.laneJitter),
       0,
       SPAWN_Z + zOffset,
     );
@@ -241,22 +290,37 @@ export class TrafficSystem implements GameSystem {
     return vehicle;
   }
 
-  private spawnPair(): void {
-    const first = Math.floor(Math.random() * LANE_OFFSETS.length);
-    let second = Math.floor(Math.random() * (LANE_OFFSETS.length - 1));
+  private spawnPair(zOffset = 0): void {
+    if (this.lanes.length < 2) return;
+    const first = Math.floor(Math.random() * this.lanes.length);
+    let second = Math.floor(Math.random() * (this.lanes.length - 1));
     if (second >= first) second += 1;
-    this.spawn(first, 0);
-    this.spawn(second, -2.5);
+    this.spawn(first, zOffset);
+    this.spawn(second, zOffset - 2.5);
   }
 
   private spawnWallWithGap(zOffset = 0, forcedGap?: number): void {
-    const gap = forcedGap ?? Math.floor(Math.random() * LANE_OFFSETS.length);
-    for (let lane = 0; lane < LANE_OFFSETS.length; lane++) {
+    const gap = forcedGap ?? Math.floor(Math.random() * this.lanes.length);
+    for (let lane = 0; lane < this.lanes.length; lane++) {
       if (lane !== gap) this.spawn(lane, zOffset + randomRange(-1.2, 1.2));
     }
   }
 
   private spawnRoadblock(maxActive: number, variant: number): void {
+    if (this.lanes.length === 3) {
+      if (this.active.length > maxActive - 2) return;
+      const gap = Math.floor(Math.random() * 3);
+      const diagonal = variant % 2 === 1;
+      let ordinal = 0;
+      for (let lane = 0; lane < 3; lane++) {
+        if (lane === gap) continue;
+        this.spawn(lane, diagonal ? -ordinal * 6 : randomRange(-1, 1));
+        ordinal += 1;
+      }
+      this.spawnTimer = Math.max(this.spawnTimer, 1.4);
+      return;
+    }
+
     const flavour = variant % 4;
 
     if (flavour === 1 && this.active.length <= maxActive - 4) {
@@ -270,9 +334,9 @@ export class TrafficSystem implements GameSystem {
     }
 
     if (flavour === 2 && this.active.length <= maxActive - 3) {
-      const gap = Math.floor(Math.random() * LANE_OFFSETS.length);
+      const gap = Math.floor(Math.random() * this.lanes.length);
       let z = 0;
-      for (let lane = 0; lane < LANE_OFFSETS.length; lane++) {
+      for (let lane = 0; lane < this.lanes.length; lane++) {
         if (lane === gap) continue;
         this.spawn(lane, z);
         z -= 5.5;
@@ -294,6 +358,15 @@ export class TrafficSystem implements GameSystem {
   }
 
   private spawnConstructionGate(maxActive: number, variant: number): void {
+    if (this.lanes.length === 3) {
+      if (this.active.length > maxActive - 2) return;
+      const gap = Math.floor(Math.random() * 3);
+      this.spawn((gap + 1) % 3, 0);
+      this.spawn((gap + 2) % 3, -8);
+      this.spawnTimer = Math.max(this.spawnTimer, 1.5);
+      return;
+    }
+
     const flavour = variant % 4;
 
     if (flavour === 1 && this.active.length <= maxActive - 3) {
@@ -327,26 +400,34 @@ export class TrafficSystem implements GameSystem {
     this.spawnTimer = Math.max(this.spawnTimer, 1.45);
   }
 
+  private spawnThreeLaneWelcome(maxActive: number, variant: number): void {
+    if (this.lanes.length !== 3 || this.active.length > maxActive - 2) return;
+    const gap = variant % 3;
+    this.spawn((gap + 1) % 3, 0);
+    this.spawn((gap + 2) % 3, variant === 3 ? -7 : -2.5);
+    this.spawnTimer = Math.max(this.spawnTimer, 1.55);
+  }
+
   private pickOpenLane(): number {
-    const weights = LANE_OFFSETS.map((laneX) => {
+    const weights = this.lanes.map((laneX) => {
       let nearby = 0;
       for (const vehicle of this.active) {
-        if (Math.abs(vehicle.position.x - laneX) < 1.2 && vehicle.position.z < -118) nearby += 1;
+        if (Math.abs(vehicle.position.x - laneX) < 1.35 && vehicle.position.z < -116) nearby += 1;
       }
       return nearby;
     });
     const min = Math.min(...weights);
     const candidates = weights.flatMap((weight, lane) => (weight === min ? [lane] : []));
-    return candidates[Math.floor(Math.random() * candidates.length)] ?? 1;
+    return candidates[Math.floor(Math.random() * candidates.length)] ?? Math.floor(this.lanes.length / 2);
   }
 
   private prefill(isRun: boolean): void {
     const count = isRun ? TRAFFIC.runPrefillCount : TRAFFIC.attractPrefillCount;
     const start = isRun ? -108 : -18;
-    const gap = isRun ? 31 : 20;
+    const gap = isRun ? 29 : 18;
 
     for (let i = 0; i < count; i++) {
-      const vehicle = this.spawn(i % LANE_OFFSETS.length);
+      const vehicle = this.spawn(i % this.lanes.length);
       vehicle.position.z = start - i * gap - randomRange(0, isRun ? 8 : 5);
       if (isRun && i < 2) vehicle.position.x = i === 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
     }
@@ -363,4 +444,10 @@ export class TrafficSystem implements GameSystem {
   private recycleAll(): void {
     while (this.active.length > 0) this.recycleAt(this.active.length - 1);
   }
+}
+
+function maxActiveForRun(elapsed: number, nitroActive: boolean): number {
+  let max = elapsed >= 145 ? 14 : elapsed >= 95 ? 13 : elapsed >= 55 ? 11 : 9;
+  if (nitroActive) max += 1;
+  return Math.min(TRAFFIC.maxActiveRun, max);
 }
