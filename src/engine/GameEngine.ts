@@ -24,6 +24,7 @@ import { CrashSequence } from './systems/CrashSequence';
 import { HeatSystem } from './systems/HeatSystem';
 import { PickupSystem } from './systems/PickupSystem';
 import { PlayerSystem } from './systems/PlayerSystem';
+import { PoliceSystem } from './systems/PoliceSystem';
 import { ScoreSystem } from './systems/ScoreSystem';
 import { TrafficSystem } from './systems/TrafficSystem';
 import { WorldScrollSystem } from './systems/WorldScrollSystem';
@@ -140,6 +141,7 @@ export class GameEngine {
       }),
       this.scoreSystem,
       this.heatSystem,
+      new PoliceSystem(this.scene, this.workshop),
       new CameraSystem(this.camera),
     ];
 
