@@ -28,6 +28,7 @@ import { PlayerSystem } from './systems/PlayerSystem';
 import { PoliceSystem } from './systems/PoliceSystem';
 import { RunDirectorSystem } from './systems/RunDirectorSystem';
 import { ScoreSystem } from './systems/ScoreSystem';
+import { SpeedFxSystem } from './systems/SpeedFxSystem';
 import { TrafficSystem } from './systems/TrafficSystem';
 import { WorldScrollSystem } from './systems/WorldScrollSystem';
 import { WorldThemeSystem } from './systems/WorldThemeSystem';
@@ -144,6 +145,7 @@ export class GameEngine {
     });
     const worldTheme = new WorldThemeSystem(this.scene);
     const police = new PoliceSystem(this.scene, this.workshop);
+    const speedFx = new SpeedFxSystem(this.scene, this.player);
 
     this.systems = [
       director,
@@ -164,6 +166,7 @@ export class GameEngine {
       this.scoreSystem,
       this.heatSystem,
       police,
+      speedFx,
       new CameraSystem(this.camera),
     ];
 
