@@ -79,11 +79,7 @@ export interface GameEngineOptions {
   tuning: RunTuning;
 }
 
-/**
- * Composition root for the simulation. It owns the three.js scene and wires
- * the systems together, but contains no gameplay rules of its own — every rule
- * lives in the system that is responsible for it.
- */
+/** Composition root for the simulation and Three scene. */
 export class GameEngine {
   readonly events = new Emitter<EngineEvents>();
   readonly scene = new Scene();
@@ -152,7 +148,19 @@ export class GameEngine {
 
   /* ----------------------------- public API ----------------------------- */
 
-  /** Swaps the glTF pack in once it has decoded. Safe to call at any time. */
+  /** Decode the glTF pack without mutating live scene objects. */
+  async prepareHighDetailModels(): Promise<boolean> {
+    if (this.disposed) return false;
+    return this.workshop.prepareModels();
+  }
+
+  /** Apply an already-decoded glTF pack synchronously between gameplay frames. */
+  activateHighDetailModels(): boolean {
+    if (this.disposed) return false;
+    return this.workshop.activatePreparedModels(this.player);
+  }
+
+  /** Legacy immediate helper retained for compatibility. */
   async loadHighDetailModels(): Promise<boolean> {
     if (this.disposed) return false;
     return this.workshop.upgradeToModels(this.player);
@@ -191,23 +199,17 @@ export class GameEngine {
     if (state.nitroCooldown > 0) return false;
 
     state.nitroRemaining = this.tuning.nitroSeconds;
-    // The cooldown spans the boost itself plus the re-arm window.
     state.nitroCooldown = this.tuning.nitroSeconds + NITRO.cooldownSeconds;
     state.started = true;
     this.events.emit('nitroFired', {});
     return true;
   }
 
-  /**
-   * Ends the current run early and banks it, the way quitting to the menu
-   * works in every runner. Returns null when there is no run to retire.
-   */
+  /** Ends the current run early and banks it. */
   retire(): RunResult | null {
     if (this.state.mode !== 'run' || this.state.crashed) return null;
 
     const result = this.buildResult();
-    // Dropping to attract mode halts scoring, collisions and telemetry at once,
-    // without triggering the crash sequence or a second `crashed` event.
     this.state.mode = 'attract';
     this.state.started = false;
     return result;
@@ -248,11 +250,6 @@ export class GameEngine {
 
   /* ------------------------------ internals ----------------------------- */
 
-  /**
-   * Two lights, neither casting. Grounding comes from the blob shadow each
-   * vehicle carries, which costs one flat circle instead of a full extra
-   * render pass over every object in the scene.
-   */
   private addLights(): void {
     this.scene.add(new HemisphereLight(0xeaf6ff, 0x4e7a3a, 0.95));
 
@@ -300,7 +297,9 @@ export class GameEngine {
     const slow = this.crashSequence.slowFactor;
     const shouldReport = this.crashSequence.update(this.state, this.player, dt);
 
-    // The world keeps drifting in slow motion behind the wreck.
+    // World/traffic/pickups can continue drifting in slow motion. PlayerSystem
+    // and CameraSystem explicitly stand down while crashed so they do not
+    // overwrite the tumble and cinematic camera from CrashSequence.
     this.runSystems(dt * slow, this.state.speed * dt * slow);
 
     if (shouldReport) this.events.emit('crashed', this.buildResult());
