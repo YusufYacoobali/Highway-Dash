@@ -43,7 +43,7 @@ jobs:
 
       - name: Commit optimized models
         run: |
-          if git diff --quiet -- assets/game-models; then
+          if [ -z "$(git status --porcelain -- assets/game-models)" ]; then
             echo 'No model changes.'
             exit 0
           fi
