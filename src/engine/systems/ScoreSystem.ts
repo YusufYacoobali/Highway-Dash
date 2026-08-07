@@ -25,8 +25,9 @@ export class ScoreSystem implements GameSystem {
   registerRam(state: SystemContext['state']): void {
     state.combo += 2;
     state.bestCombo = Math.max(state.bestCombo, state.combo);
-    state.comboTimer = SCORING.comboWindow + 0.55;
-    state.coins += 8 + Math.floor(state.combo / 2);
+    state.comboTimer = SCORING.comboWindow + 0.75;
+    const chainBonus = Math.min(24, state.nitroSmashes * 3);
+    state.coins += 8 + chainBonus + Math.floor(state.combo / 2);
   }
 
   registerCoins(state: SystemContext['state'], value: number): void {
