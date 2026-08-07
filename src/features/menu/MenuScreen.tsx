@@ -1,54 +1,54 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, ChunkyButton, CoinChip, GemChip } from '@/ui/components';
 import { alpha, palette, radii, spacing } from '@/ui/theme';
+import { MENU_BACKGROUND_URI } from './menuBackground';
+import { MENU_LOGO_URI } from './menuLogo';
 
 export interface MenuScreenProps {
   coins: number;
   gems: number;
-  seasonTier: number;
   claimableMissions: number;
-  hasFreeCrate: boolean;
   onPlay(): void;
   onGarage(): void;
   onMissions(): void;
-  onShop(): void;
-  onSeason(): void;
 }
 
 /**
- * The title screen. It deliberately has no background of its own — the live
- * attract-mode drive shows straight through, which is what sells the game
- * before the player taps anything.
+ * The title screen uses generated art so the first impression matches the
+ * polished hyper-casual reference rather than depending on the live GL scene.
  */
 export const MenuScreen: React.FC<MenuScreenProps> = ({
   coins,
   gems,
-  seasonTier,
   claimableMissions,
-  hasFreeCrate,
   onPlay,
   onGarage,
   onMissions,
-  onShop,
-  onSeason,
 }) => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+    <View style={StyleSheet.absoluteFill}>
+      <Image
+        source={{ uri: MENU_BACKGROUND_URI }}
+        resizeMode="cover"
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
       <LinearGradient
         pointerEvents="none"
         colors={[
-          'rgba(10,32,66,0.34)',
-          'rgba(10,32,66,0)',
-          'rgba(6,20,40,0)',
-          'rgba(6,20,40,0.62)',
+          'rgba(4,29,67,0.08)',
+          'rgba(4,29,67,0)',
+          'rgba(5,20,47,0.05)',
+          'rgba(4,16,38,0.70)',
         ]}
-        locations={[0, 0.26, 0.52, 1]}
+        locations={[0, 0.34, 0.60, 1]}
         style={StyleSheet.absoluteFill}
       />
 
@@ -57,27 +57,21 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
         <GemChip value={gems} />
       </View>
 
-      <View style={[styles.titleBlock, { top: insets.top + 70 }]} pointerEvents="none">
-        <AppText variant="displayXL" align="center" emboss={palette.navy300}>
-          HIGHWAY
-        </AppText>
-        <AppText
-          variant="displayXL"
-          align="center"
-          color={palette.gold}
-          emboss={palette.goldShadow}
-          style={styles.titleSecondLine}
-        >
-          DASH
-        </AppText>
-        <AppText variant="caption" align="center" style={styles.tagline}>
-          ENDLESS TRAFFIC RUNNER
-        </AppText>
+      <View style={[styles.titleBlock, { top: insets.top + 58 }]} pointerEvents="none">
+        <Image source={{ uri: MENU_LOGO_URI }} resizeMode="contain" style={styles.logo} />
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-        <ChunkyButton onPress={onPlay} tone="green" height={88} depth={9} shine pulse accessibilityLabel="Play">
-          <AppText variant="displayL" emboss="rgba(20,70,10,0.55)">
+        <ChunkyButton
+          onPress={onPlay}
+          tone="green"
+          height={92}
+          depth={9}
+          shine
+          pulse
+          accessibilityLabel="Play"
+        >
+          <AppText variant="displayL" emboss="rgba(20,70,10,0.55)" style={styles.playText}>
             PLAY
           </AppText>
         </ChunkyButton>
@@ -85,8 +79,6 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
         <View style={styles.navRow}>
           <NavTile label="GARAGE" onPress={onGarage} />
           <NavTile label="MISSIONS" onPress={onMissions} badge={claimableMissions} />
-          <NavTile label="SHOP" onPress={onShop} dot={hasFreeCrate} />
-          <NavTile label="SEASON" caption={`TIER ${seasonTier}`} onPress={onSeason} />
         </View>
 
         <AppText variant="body" align="center" color={alpha.white85} style={styles.hint}>
@@ -100,34 +92,25 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
 interface NavTileProps {
   label: string;
   onPress(): void;
-  caption?: string;
   badge?: number;
-  dot?: boolean;
 }
 
-const NavTile: React.FC<NavTileProps> = ({ label, onPress, caption, badge = 0, dot = false }) => (
+const NavTile: React.FC<NavTileProps> = ({ label, onPress, badge = 0 }) => (
   <Pressable
     accessibilityRole="button"
-    accessibilityLabel={caption ? `${label} ${caption}` : label}
+    accessibilityLabel={label}
     onPress={onPress}
     style={({ pressed }) => [styles.navTile, pressed && styles.navTilePressed]}
   >
-    <AppText variant="caption" color={caption ? palette.gold : palette.white} numberOfLines={1}>
+    <AppText variant="bodyStrong" color={palette.white} numberOfLines={1}>
       {label}
     </AppText>
-    {caption ? (
-      <AppText variant="bodyStrong" numberOfLines={1}>
-        {caption}
-      </AppText>
-    ) : null}
     {badge > 0 ? (
       <View style={styles.badge}>
         <AppText variant="micro" color={palette.ink}>
           {badge}
         </AppText>
       </View>
-    ) : dot ? (
-      <View style={styles.dot} />
     ) : null}
   </Pressable>
 );
@@ -140,34 +123,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 14,
+    zIndex: 3,
   },
-  titleBlock: { position: 'absolute', left: 0, right: 0 },
-  titleSecondLine: { fontSize: 76, lineHeight: 72, marginTop: 2 },
-  tagline: { marginTop: 12, fontSize: 14, letterSpacing: 2.6 },
+  titleBlock: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  logo: {
+    width: '100%',
+    height: 245,
+  },
   footer: {
     marginTop: 'auto',
     paddingHorizontal: 26,
     gap: spacing.md,
+    zIndex: 3,
   },
-  navRow: { flexDirection: 'row', gap: 9 },
+  playText: { fontSize: 48, lineHeight: 54 },
+  navRow: { flexDirection: 'row', gap: 10 },
   navTile: {
     flex: 1,
     height: 58,
     borderRadius: radii.lg,
-    backgroundColor: alpha.navyGlass,
+    backgroundColor: 'rgba(16,39,74,0.86)',
     borderWidth: 3,
     borderColor: alpha.white45,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 2,
+    paddingHorizontal: 8,
   },
-  navTilePressed: { backgroundColor: alpha.navyGlassStrong, transform: [{ scale: 0.96 }] },
-  // Badges sit inside the tile rather than overhanging it: Android clips
-  // absolutely-positioned children against a rounded parent.
+  navTilePressed: {
+    backgroundColor: alpha.navyGlassStrong,
+    transform: [{ scale: 0.96 }],
+  },
   badge: {
     position: 'absolute',
     top: 3,
-    right: 3,
+    right: 5,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
@@ -176,14 +171,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dot: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: palette.red,
+  hint: {
+    textShadowColor: 'rgba(6,20,40,0.85)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
-  hint: { textShadowColor: 'rgba(6,20,40,0.7)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 },
 });
