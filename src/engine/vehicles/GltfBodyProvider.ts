@@ -44,11 +44,7 @@ export class GltfBodyProvider implements VehicleBodyProvider {
           const buffer = await readAssetArrayBuffer(asset);
           const gltf = await loader.parseAsync(buffer, '');
 
-          // For the compressed test car the offline step changes packaging only:
-          // geometry, normals, UVs and authored material scalar values are kept
-          // intact. Reattach the GLB's exact extracted image pixels here.
           await attachAuthoredTextures(gltf.scene, spec);
-
           models.set(modelId, prepareModel(gltf.scene, spec));
         } catch (error) {
           console.warn(`[HighwayDash] Failed to load vehicle model: ${modelId}`, error);
@@ -82,12 +78,9 @@ export class GltfBodyProvider implements VehicleBodyProvider {
 }
 
 async function attachAuthoredTextures(root: Object3D, spec: VehicleModelSpec): Promise<void> {
-  if (!spec.textures) return;
+  if (!spec.textures?.baseColor) return;
 
-  const [baseColor, metalRough] = await Promise.all([
-    spec.textures.baseColor ? loadNativeTexture(spec.textures.baseColor, 'srgb') : Promise.resolve(null),
-    spec.textures.metalRough ? loadNativeTexture(spec.textures.metalRough, 'linear') : Promise.resolve(null),
-  ]);
+  const baseColor = await loadNativeTexture(spec.textures.baseColor, 'srgb');
 
   root.traverse((node) => {
     const mesh = node as Mesh;
@@ -97,13 +90,15 @@ async function attachAuthoredTextures(root: Object3D, spec: VehicleModelSpec): P
       const standard = material as MeshStandardMaterial;
       if (!standard.isMeshStandardMaterial) continue;
 
-      if (baseColor) standard.map = baseColor;
-      if (metalRough) {
-        // glTF stores roughness in G and metallic in B; Three's standard
-        // material reads those exact channels when the same map is assigned.
-        standard.roughnessMap = metalRough;
-        standard.metalnessMap = metalRough;
-      }
+      // The extracted PNG is the authored colour/albedo. Keep that exact map,
+      // but do not use the GLB defaults of metalness=1/roughness=1: with no
+      // environment map that makes painted bodywork render almost black.
+      standard.map = baseColor;
+      standard.color.set(0xffffff);
+      standard.metalnessMap = null;
+      standard.roughnessMap = null;
+      standard.metalness = 0.05;
+      standard.roughness = 0.72;
       standard.needsUpdate = true;
     }
   });
