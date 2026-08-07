@@ -41,14 +41,17 @@ for (const file of files) {
 
   await document.transform(dedup(), weld({ toleranceNormal: 0.35 }), prune());
 
-  const currentTriangles = countTriangles(document);
-  if (currentTriangles > TARGET_TRIANGLES) {
-    const ratio = Math.max(0.025, Math.min(0.9, TARGET_TRIANGLES / currentTriangles));
+  // Meshopt's ratio is vertex-based, so use a second pass when needed to get
+  // close to the actual traffic triangle budget rather than stopping early.
+  for (let pass = 0; pass < 2; pass++) {
+    const currentTriangles = countTriangles(document);
+    if (currentTriangles <= TARGET_TRIANGLES * 1.2) break;
+    const ratio = Math.max(0.008, Math.min(0.9, TARGET_TRIANGLES / currentTriangles));
     await document.transform(
       simplify({
         simplifier: MeshoptSimplifier,
         ratio,
-        error: 0.0025,
+        error: 0.0035,
         lockBorder: false,
       }),
     );
