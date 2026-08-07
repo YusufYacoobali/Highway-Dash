@@ -1,0 +1,206 @@
+[
+  {
+    "name": "traffic_compact_red",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Short compact traffic car",
+    "file": "traffic_compact_red.glb",
+    "extents": [
+      1.88,
+      1.18,
+      3.407
+    ]
+  },
+  {
+    "name": "traffic_wagon_green",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Long estate/wagon silhouette",
+    "file": "traffic_wagon_green.glb",
+    "extents": [
+      1.88,
+      1.18,
+      4.237
+    ]
+  },
+  {
+    "name": "traffic_taxi_yellow",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Taxi with roof sign",
+    "file": "traffic_taxi_yellow.glb",
+    "extents": [
+      1.88,
+      1.45,
+      3.977
+    ]
+  },
+  {
+    "name": "traffic_pickup_orange",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Pickup truck; still lane-safe width",
+    "file": "traffic_pickup_orange.glb",
+    "extents": [
+      1.88,
+      1.38,
+      4.195
+    ]
+  },
+  {
+    "name": "traffic_delivery_van_white",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Delivery van, narrower than box truck",
+    "file": "traffic_delivery_van_white.glb",
+    "extents": [
+      1.88,
+      1.955,
+      4.335
+    ]
+  },
+  {
+    "name": "traffic_minivan_purple",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Family minivan",
+    "file": "traffic_minivan_purple.glb",
+    "extents": [
+      1.88,
+      1.56,
+      4.075
+    ]
+  },
+  {
+    "name": "traffic_muscle_gray",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Chunky muscle car",
+    "file": "traffic_muscle_gray.glb",
+    "extents": [
+      1.88,
+      1.21,
+      4.307
+    ]
+  },
+  {
+    "name": "traffic_microcar_lime",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Tiny city car",
+    "file": "traffic_microcar_lime.glb",
+    "extents": [
+      1.822,
+      1.18,
+      2.877
+    ]
+  },
+  {
+    "name": "traffic_city_bus_blue",
+    "category": "traffic",
+    "tier": null,
+    "notes": "Large-looking city bus kept below 2.0 width",
+    "file": "traffic_city_bus_blue.glb",
+    "extents": [
+      1.95,
+      2.21,
+      4.575
+    ]
+  },
+  {
+    "name": "player_sportier_coupe",
+    "category": "player",
+    "tier": 2,
+    "notes": "Sharper upgrade from base sports car",
+    "file": "player_sportier_coupe.glb",
+    "extents": [
+      1.9,
+      1.21,
+      3.877
+    ]
+  },
+  {
+    "name": "player_supercar_orange",
+    "category": "player",
+    "tier": 3,
+    "notes": "Low exotic supercar",
+    "file": "player_supercar_orange.glb",
+    "extents": [
+      1.9,
+      1.21,
+      4.077
+    ]
+  },
+  {
+    "name": "player_hypercar_red",
+    "category": "player",
+    "tier": 4,
+    "notes": "Ultra-low hypercar with canopy and active wing",
+    "file": "player_hypercar_red.glb",
+    "extents": [
+      1.9,
+      1.09,
+      4.255
+    ]
+  },
+  {
+    "name": "player_formula_racer",
+    "category": "player",
+    "tier": 5,
+    "notes": "Open-wheel formula racer",
+    "file": "player_formula_racer.glb",
+    "extents": [
+      1.9,
+      0.9,
+      3.875
+    ]
+  },
+  {
+    "name": "player_rocket_car",
+    "category": "player",
+    "tier": 6,
+    "notes": "Rocket-powered top-tier novelty vehicle",
+    "file": "player_rocket_car.glb",
+    "extents": [
+      1.9,
+      1.04,
+      4.41
+    ]
+  },
+  {
+    "name": "player_shopping_cart",
+    "category": "player",
+    "tier": "silly",
+    "notes": "Shopping cart challenge unlock",
+    "file": "player_shopping_cart.glb",
+    "extents": [
+      1.44,
+      1.53,
+      1.72
+    ]
+  },
+  {
+    "name": "player_sofa_car",
+    "category": "player",
+    "tier": "silly",
+    "notes": "Driveable sofa novelty unlock",
+    "file": "player_sofa_car.glb",
+    "extents": [
+      1.802,
+      1.14,
+      2.7
+    ]
+  },
+  {
+    "name": "player_tiny_micro_racer",
+    "category": "player",
+    "tier": "silly",
+    "notes": "Tiny toy-like racer",
+    "file": "player_tiny_micro_racer.glb",
+    "extents": [
+      1.572,
+      1.12,
+      2.495
+    ]
+  }
+]
