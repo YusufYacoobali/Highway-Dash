@@ -21,7 +21,6 @@ import { isSceneScreen, useNavigationStore, type ScreenId } from '@/state/naviga
 import {
   runTuningFor,
   selectClaimableMissions,
-  selectHasFreeCrate,
   useProfileStore,
 } from '@/state/profileStore';
 import { useRunStore } from '@/state/runStore';
@@ -166,7 +165,6 @@ const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
   const profile = useProfileStore();
   const summary = useRunStore((s) => s.summary);
   const claimableMissions = useProfileStore(selectClaimableMissions);
-  const hasFreeCrate = useProfileStore(selectHasFreeCrate);
 
   const [crateResultLabel, setCrateResultLabel] = useState<string | null>(null);
 
@@ -198,8 +196,8 @@ const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
 
   const handleBuyBundle = useCallback(
     async (bundle: ShopBundle) => {
-      // Gem-priced bundles settle in-game; real-money ones must clear the store
-      // first and are only credited on a confirmed purchase.
+      // The shop remains implemented but is intentionally not exposed from the
+      // home screen while the core gameplay loop is being tuned.
       if (bundle.costsGems === undefined) {
         const outcome = await commerce.purchase(bundle);
         if (outcome !== 'purchased') {
@@ -225,7 +223,6 @@ const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
       feedback.play('reward');
       return;
     }
-    // Not enough gems — send the player to where they can get some.
     goShop();
   }, [feedback, goShop, profile]);
 
@@ -235,14 +232,10 @@ const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
         <MenuScreen
           coins={profile.coins}
           gems={profile.gems}
-          seasonTier={profile.season.tier}
           claimableMissions={claimableMissions}
-          hasFreeCrate={hasFreeCrate}
           onPlay={onPlay}
           onGarage={goTo('garage')}
           onMissions={goTo('missions')}
-          onShop={goShop}
-          onSeason={goTo('season')}
         />
       );
 
