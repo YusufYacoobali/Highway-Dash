@@ -68,9 +68,13 @@ export function createRenderer(
     renderer,
     width,
     height,
-    // expo-gl owns the default framebuffer. Render normally with three.js,
-    // then explicitly present the completed frame to the native GL surface.
-    present: () => gl.endFrameEXP(),
+    // Expo's GLView examples explicitly flush GL commands before presenting.
+    // Browsers normally make this implicit at swap time, but expo-gl exposes
+    // presentation separately via endFrameEXP().
+    present: () => {
+      gl.flush();
+      gl.endFrameEXP();
+    },
     dispose: () => {
       renderer.dispose();
     },
