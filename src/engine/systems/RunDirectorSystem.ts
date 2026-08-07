@@ -12,44 +12,30 @@ interface Beat {
   seconds: number;
 }
 
-/**
- * A run is a sequence of pressure/recovery beats, not one continuous spawn ramp.
- * The first lap is authored so every new player gets a strong 2-minute story;
- * after that the director remixes safe event beats indefinitely.
- */
-const OPENING_BEATS: readonly Beat[] = [
-  { event: 'cruise', seconds: 13 },
-  { event: 'coinRush', seconds: 10 },
-  { event: 'construction', seconds: 10 },
-  { event: 'cruise', seconds: 7 },
-  { event: 'tunnel', seconds: 14 },
-  { event: 'nitroRush', seconds: 9 },
-  { event: 'cruise', seconds: 7 },
-  { event: 'police', seconds: 16 },
-  { event: 'cruise', seconds: 7 },
-  { event: 'roadblock', seconds: 11 },
-  { event: 'coinRush', seconds: 10 },
-];
+interface ThemeWindow {
+  start: number;
+  theme: WorldThemeId;
+}
 
-const ENDLESS_POOL: readonly RunEventId[] = [
-  'coinRush',
-  'construction',
-  'nitroRush',
-  'police',
-  'roadblock',
-];
+const EARLY_EVENTS: readonly RunEventId[] = ['coinRush', 'construction', 'tunnel', 'nitroRush'];
+const LATE_EVENTS: readonly RunEventId[] = ['police', 'roadblock', 'coinRush', 'construction', 'nitroRush', 'tunnel'];
+const WORLD_THEMES: readonly WorldThemeId[] = ['forest', 'night', 'coast', 'storm'];
 
+/** Fresh event deck, durations, variants and world route are rolled every run. */
 export class RunDirectorSystem implements GameSystem {
   readonly name = 'runDirector';
 
   private beatIndex = 0;
+  private openingBeats: Beat[] = [];
+  private themeWindows: ThemeWindow[] = [];
+  private lastSpectacle: RunEventId = 'cruise';
 
   constructor(private readonly observer: RunDirectorObserver) {}
 
   update({ state, dt }: SystemContext): void {
     if (state.mode !== 'run' || state.crashed) return;
 
-    const nextTheme = themeForElapsed(state.elapsed, state.event);
+    const nextTheme = this.themeForState(state.elapsed, state.event);
     if (nextTheme !== state.theme) {
       state.theme = nextTheme;
       this.observer.onThemeChanged(nextTheme);
@@ -65,14 +51,19 @@ export class RunDirectorSystem implements GameSystem {
 
     state.policePressure = clamp((state.stars - 1) / 4, 0, 1);
     if (state.stars >= 3) state.trafficIntensity = Math.min(1.08, state.trafficIntensity + 0.08);
-
     if (state.event === 'nitroRush') state.nitroCooldown = Math.min(state.nitroCooldown, 0.25);
   }
 
   reset({ state }: Omit<SystemContext, 'dt' | 'scroll'>): void {
     this.beatIndex = 0;
-    state.event = 'cruise';
-    state.eventRemaining = state.mode === 'run' ? OPENING_BEATS[0].seconds : 9999;
+    this.lastSpectacle = 'cruise';
+    this.openingBeats = buildOpeningBeats();
+    this.themeWindows = buildThemeWindows();
+
+    const firstBeat = this.openingBeats[0] ?? { event: 'cruise' as const, seconds: 12 };
+    state.event = firstBeat.event;
+    state.eventVariant = rollEventVariant(firstBeat.event);
+    state.eventRemaining = state.mode === 'run' ? firstBeat.seconds : 9999;
     state.eventSerial = 0;
     state.theme = 'sunset';
     state.intensity = 0;
@@ -81,34 +72,38 @@ export class RunDirectorSystem implements GameSystem {
   }
 
   private advanceBeat(state: SystemContext['state']): void {
-    if (this.beatIndex < OPENING_BEATS.length - 1) {
+    if (this.beatIndex < this.openingBeats.length - 1) {
       this.beatIndex += 1;
-      const beat = OPENING_BEATS[this.beatIndex];
+      const beat = this.openingBeats[this.beatIndex];
       this.start(state, beat.event, beat.seconds);
       return;
     }
 
     if (state.event !== 'cruise') {
-      this.start(state, 'cruise', RUN_DIRECTOR.recoverySeconds);
+      this.start(state, 'cruise', randomRange(5.5, RUN_DIRECTOR.recoverySeconds + 2));
       return;
     }
 
-    let event = ENDLESS_POOL[Math.floor(Math.random() * ENDLESS_POOL.length)];
-    if (state.stars < 2 && event === 'police') event = 'construction';
-    if (state.stars < 4 && event === 'roadblock' && Math.random() < 0.55) event = 'coinRush';
-    this.start(
-      state,
-      event,
-      randomRange(RUN_DIRECTOR.eventMinSeconds, RUN_DIRECTOR.eventMaxSeconds),
-    );
+    const event = this.pickEndlessEvent(state.stars);
+    this.start(state, event, randomRange(RUN_DIRECTOR.eventMinSeconds, RUN_DIRECTOR.eventMaxSeconds));
+  }
+
+  private pickEndlessEvent(stars: number): RunEventId {
+    let pool = [...LATE_EVENTS].filter((event) => event !== this.lastSpectacle);
+    if (stars < 2) pool = pool.filter((event) => event !== 'police');
+    if (stars < 4 && Math.random() < 0.58) pool = pool.filter((event) => event !== 'roadblock');
+    if (pool.length === 0) pool = ['coinRush', 'construction', 'nitroRush'];
+    return pool[Math.floor(Math.random() * pool.length)] ?? 'coinRush';
   }
 
   private start(state: SystemContext['state'], event: RunEventId, seconds: number): void {
     state.event = event;
+    state.eventVariant = rollEventVariant(event);
     state.eventRemaining = seconds;
     state.eventSerial += 1;
+    if (event !== 'cruise') this.lastSpectacle = event;
 
-    const nextTheme = themeForElapsed(state.elapsed, event);
+    const nextTheme = this.themeForState(state.elapsed, event);
     if (nextTheme !== state.theme) {
       state.theme = nextTheme;
       this.observer.onThemeChanged(nextTheme);
@@ -116,6 +111,86 @@ export class RunDirectorSystem implements GameSystem {
 
     this.observer.onEventStarted(event, state.theme);
   }
+
+  private themeForState(elapsed: number, event: RunEventId): WorldThemeId {
+    if (event === 'tunnel') return 'tunnel';
+
+    let theme: WorldThemeId = 'sunset';
+    for (const window of this.themeWindows) {
+      if (elapsed < window.start) break;
+      theme = window.theme;
+    }
+    return theme;
+  }
+}
+
+function buildOpeningBeats(): Beat[] {
+  const beats: Beat[] = [{ event: 'cruise', seconds: randomRange(10, 14) }];
+  const early = shuffled(EARLY_EVENTS).slice(0, 3);
+  const late = shuffled(LATE_EVENTS).slice(0, 4);
+
+  for (const event of early) {
+    beats.push({ event, seconds: durationForEvent(event, false) });
+    beats.push({ event: 'cruise', seconds: randomRange(5, 8) });
+  }
+
+  let previous: RunEventId = early[early.length - 1] ?? 'cruise';
+  for (let event of late) {
+    if (event === previous) event = event === 'coinRush' ? 'construction' : 'coinRush';
+    beats.push({ event, seconds: durationForEvent(event, true) });
+    beats.push({ event: 'cruise', seconds: randomRange(5.5, 8.5) });
+    previous = event;
+  }
+
+  return beats;
+}
+
+function buildThemeWindows(): ThemeWindow[] {
+  const route = shuffled(WORLD_THEMES);
+  let start = randomRange(27, 34);
+  const windows: ThemeWindow[] = [];
+
+  for (const theme of route) {
+    windows.push({ start, theme });
+    start += randomRange(30, 43);
+  }
+
+  return windows;
+}
+
+function rollEventVariant(event: RunEventId): number {
+  if (event === 'cruise') return 0;
+  // Variant 3 is the deliberately rare, extra-chaotic version (~9%).
+  if (Math.random() < 0.09) return 3;
+  return Math.floor(Math.random() * 3);
+}
+
+function durationForEvent(event: RunEventId, late: boolean): number {
+  switch (event) {
+    case 'coinRush':
+      return randomRange(8.5, 12.5);
+    case 'construction':
+      return randomRange(8, late ? 12.5 : 10.5);
+    case 'tunnel':
+      return randomRange(11, 16.5);
+    case 'nitroRush':
+      return randomRange(7.5, 11);
+    case 'police':
+      return randomRange(12, 18);
+    case 'roadblock':
+      return randomRange(9, 13.5);
+    case 'cruise':
+      return randomRange(5, 8);
+  }
+}
+
+function shuffled<T>(items: readonly T[]): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
 function pressureForEvent(event: RunEventId): number {
@@ -135,14 +210,4 @@ function pressureForEvent(event: RunEventId): number {
     case 'roadblock':
       return 0.22;
   }
-}
-
-function themeForElapsed(elapsed: number, event: RunEventId): WorldThemeId {
-  if (event === 'tunnel') return 'tunnel';
-  if (elapsed < 30) return 'sunset';
-  if (elapsed < 52) return 'forest';
-  if (elapsed < 70) return 'tunnel';
-  if (elapsed < 116) return 'night';
-  if (elapsed < 158) return 'coast';
-  return 'storm';
 }

@@ -18,18 +18,18 @@ export type RunEventId =
 
 export type WorldThemeId = 'sunset' | 'forest' | 'tunnel' | 'night' | 'coast' | 'storm';
 
-/** Snapshot pushed to the HUD. Plain data so it can cross the React boundary. */
 export interface Telemetry {
   kmh: number;
   distance: number;
   coins: number;
   combo: number;
   stars: number;
-  /** False until the player first touches the road — gates the tutorial hint. */
   started: boolean;
   nitroActive: boolean;
   nitroReady: boolean;
   event: RunEventId;
+  /** 0–3 flavour chosen fresh whenever an event starts. */
+  eventVariant: number;
   eventRemaining: number;
   theme: WorldThemeId;
   intensity: number;
@@ -45,6 +45,7 @@ export const EMPTY_TELEMETRY: Telemetry = {
   nitroActive: false,
   nitroReady: true,
   event: 'cruise',
+  eventVariant: 0,
   eventRemaining: 0,
   theme: 'sunset',
   intensity: 0,
@@ -62,12 +63,10 @@ export interface EngineEvents {
   crashed: RunResult;
 }
 
-/** Mutable per-run simulation state, owned by the engine and read by systems. */
 export interface RunState {
   mode: EngineMode;
   elapsed: number;
   speed: number;
-  /** Where the player is steering to; `x` chases it. */
   steerTarget: number;
   x: number;
   distance: number;
@@ -90,6 +89,7 @@ export interface RunState {
   slowMoRemaining: number;
   slowMoScale: number;
   event: RunEventId;
+  eventVariant: number;
   eventRemaining: number;
   eventSerial: number;
   theme: WorldThemeId;
@@ -98,26 +98,22 @@ export interface RunState {
   policePressure: number;
 }
 
-/** Everything a system may touch during a frame. */
 export interface SystemContext {
   scene: Scene;
   state: RunState;
   tuning: RunTuning;
   player: VehicleObject;
   dt: number;
-  /** World-space metres the road scrolled this frame. */
   scroll: number;
 }
 
 export interface GameSystem {
   readonly name: string;
   update(ctx: SystemContext): void;
-  /** Called whenever a fresh run (or attract loop) begins. */
   reset?(ctx: Omit<SystemContext, 'dt' | 'scroll'>): void;
   dispose?(): void;
 }
 
-/** Paint job applied on top of a shared silhouette. */
 export interface Livery {
   body: string;
   roof: string;
@@ -128,13 +124,9 @@ export interface VehicleMeta {
   width: number;
   silhouette: VehicleSilhouette;
   livery: Livery;
-  /** Active authored test GLB id, when the glTF provider is being used. */
   modelId?: string;
-  /** Traffic only: how fast this car is cruising, world units/second. */
   speed: number;
-  /** Traffic only: whether the near-miss check has already run for this car. */
   passed: boolean;
-  /** Nitro collisions turn traffic into temporary launched physics props. */
   rammed?: boolean;
   ramVelocityX?: number;
   ramVelocityY?: number;
@@ -147,12 +139,7 @@ export type VehicleObject = Group & { userData: VehicleMeta };
 export interface VehicleBodySpec {
   silhouette: VehicleSilhouette;
   livery: Livery;
-  /** Optional authored GLB id used by the test model pool. */
   modelId?: string;
-  /**
-   * True for the player's car, whose paint may match the garage selection.
-   * Test mode currently preserves authored colours instead.
-   */
   recolor: boolean;
 }
 

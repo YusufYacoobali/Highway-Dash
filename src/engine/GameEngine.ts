@@ -78,6 +78,7 @@ function createRunState(mode: EngineMode): RunState {
     slowMoRemaining: 0,
     slowMoScale: 1,
     event: 'cruise',
+    eventVariant: 0,
     eventRemaining: 0,
     eventSerial: 0,
     theme: 'sunset',
@@ -257,7 +258,6 @@ export class GameEngine {
     this.state.slowMoRemaining = Math.max(0, this.state.slowMoRemaining - wallDt);
     if (this.state.slowMoRemaining <= 0) this.state.slowMoScale = 1;
 
-    // Event/run timers remain real time; only motion receives the cinematic time scale.
     this.state.elapsed += wallDt;
     this.advanceSpeed(dt);
     this.state.distance += this.state.speed * dt;

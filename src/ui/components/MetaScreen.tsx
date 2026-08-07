@@ -5,11 +5,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from './AppText';
 import { ChevronLeftIcon } from './Icons';
-import { palette, radii, spacing } from '@/ui/theme';
+import { alpha, palette, radii, spacing } from '@/ui/theme';
 
-export const skyGradient = [palette.sky600, palette.sky400, palette.sky200] as const;
-export const shopGradient = [palette.sky600, palette.sky300] as const;
-export const seasonGradient = [palette.sky700, palette.sky500, '#FFC46B'] as const;
+export const skyGradient = [palette.navy800, '#10284B', '#17466F'] as const;
+export const shopGradient = [palette.navy800, '#12365A', '#1C5882'] as const;
+export const seasonGradient = [palette.navy900, '#1A315C', '#5D3E73'] as const;
 
 interface MetaScreenProps {
   colors?: readonly [string, string, ...string[]];
@@ -17,10 +17,7 @@ interface MetaScreenProps {
   style?: ViewStyle;
 }
 
-/**
- * Full-bleed gradient surface shared by every non-gameplay screen. Owning the
- * safe-area padding here means individual screens only lay out content.
- */
+/** Dark, quiet shell that lets content and rewards carry the colour. */
 export const MetaScreen: React.FC<MetaScreenProps> = ({
   colors = skyGradient,
   children,
@@ -58,17 +55,17 @@ export const ScreenHeader: React.FC<HeaderProps> = ({
       accessibilityLabel="Back"
       onPress={onBack}
       style={({ pressed }) => [styles.backButton, pressed && styles.backPressed]}
-      hitSlop={8}
+      hitSlop={10}
     >
-      <ChevronLeftIcon size={22} />
+      <ChevronLeftIcon size={21} />
     </Pressable>
     <View style={styles.headerTitles}>
       {subtitle ? (
-        <AppText variant="caption" color="#FFF3C9">
+        <AppText variant="caption" color={alpha.white62}>
           {subtitle}
         </AppText>
       ) : null}
-      <AppText variant="displayS" color={titleColor} emboss={palette.navy300} style={styles.title}>
+      <AppText variant="title" color={titleColor} style={styles.title}>
         {title}
       </AppText>
     </View>
@@ -80,21 +77,22 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: 14,
-    paddingBottom: spacing.md,
+    gap: spacing.md,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    minHeight: 58,
   },
   headerTitles: { flex: 1 },
-  title: { fontSize: 27, lineHeight: 32 },
+  title: { fontSize: 22, lineHeight: 27, letterSpacing: 0.2 },
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.md,
-    backgroundColor: palette.navy500,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.3)',
+    width: 38,
+    height: 38,
+    borderRadius: radii.pill,
+    backgroundColor: alpha.white08,
+    borderWidth: 1,
+    borderColor: alpha.white14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backPressed: { opacity: 0.7, transform: [{ scale: 0.94 }] },
+  backPressed: { opacity: 0.62, transform: [{ scale: 0.95 }] },
 });

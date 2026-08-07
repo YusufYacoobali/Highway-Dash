@@ -14,7 +14,7 @@ export interface PickupObserver {
   onCoinCollected(value: number): void;
 }
 
-/** Lays out normal coin lines plus denser authored reward beats. */
+/** Reward lines become mini steering challenges during Coin Rush. */
 export class PickupSystem implements GameSystem {
   readonly name = 'pickups';
 
@@ -53,7 +53,7 @@ export class PickupSystem implements GameSystem {
       this.spawnTimer -= ctx.dt;
       if (this.spawnTimer <= 0) {
         this.spawnTimer = intervalForEvent(ctx.state.event);
-        this.spawnRun(ctx.state.event);
+        this.spawnRun(ctx.state.event, ctx.state.eventVariant);
       }
     }
     this.collectStep(ctx);
@@ -64,7 +64,7 @@ export class PickupSystem implements GameSystem {
     this.spawnTimer = PICKUPS.spawnInterval;
 
     for (let i = 0; i < 3; i++) {
-      const run = this.spawnRun('cruise');
+      const run = this.spawnRun('cruise', 0);
       for (const coin of run) coin.position.z -= i * 38;
     }
   }
@@ -114,7 +114,7 @@ export class PickupSystem implements GameSystem {
     }
   }
 
-  private spawnRun(event: RunEventId): Mesh[] {
+  private spawnRun(event: RunEventId, variant: number): Mesh[] {
     const laneIndex = Math.floor(Math.random() * LANE_OFFSETS.length);
     const lane = LANE_OFFSETS[laneIndex];
     const coinRush = event === 'coinRush';
@@ -124,7 +124,7 @@ export class PickupSystem implements GameSystem {
         coinRush ? PICKUPS.runLengthMax + 6 : PICKUPS.runLengthMax,
       ),
     );
-    const spacing = coinRush ? 3.05 : PICKUPS.spacing;
+    const spacing = coinRush ? (variant === 3 ? 2.65 : 3.05) : PICKUPS.spacing;
     const direction = laneIndex <= 1 ? 1 : -1;
     const neighbourIndex = Math.max(0, Math.min(LANE_OFFSETS.length - 1, laneIndex + direction));
     const neighbour = LANE_OFFSETS[neighbourIndex];
@@ -132,9 +132,10 @@ export class PickupSystem implements GameSystem {
 
     for (let i = 0; i < count; i++) {
       const coin = this.pool.acquire();
-      const wave = coinRush ? Math.min(1, Math.max(0, (i - 2) / Math.max(1, count - 5))) : 0;
-      const x = coinRush ? lane + (neighbour - lane) * (0.5 - Math.cos(wave * Math.PI) * 0.5) : lane;
-      coin.position.set(x, PICKUPS.height, SPAWN_Z - i * spacing);
+      const t = count > 1 ? i / (count - 1) : 0;
+      const x = coinRush ? coinRushX(variant, t, i, lane, neighbour) : lane;
+      const y = coinRush && variant === 3 ? PICKUPS.height + Math.sin(t * Math.PI * 3) * 0.18 : PICKUPS.height;
+      coin.position.set(x, y, SPAWN_Z - i * spacing);
       this.active.push(coin);
       run.push(coin);
     }
@@ -144,6 +145,23 @@ export class PickupSystem implements GameSystem {
   private recycleAt(index: number): void {
     const [coin] = this.active.splice(index, 1);
     this.pool.release(coin);
+  }
+}
+
+function coinRushX(variant: number, t: number, index: number, lane: number, neighbour: number): number {
+  switch (variant % 4) {
+    case 1: {
+      const left = LANE_OFFSETS[0];
+      const right = LANE_OFFSETS[LANE_OFFSETS.length - 1];
+      return left + (right - left) * (0.5 - Math.cos(t * Math.PI * 2) * 0.5);
+    }
+    case 2:
+      return Math.floor(index / 3) % 2 === 0 ? lane : neighbour;
+    case 3:
+      return lane + Math.sin(t * Math.PI * 3) * 0.45;
+    case 0:
+    default:
+      return lane + (neighbour - lane) * (0.5 - Math.cos(t * Math.PI) * 0.5);
   }
 }
 

@@ -12,8 +12,8 @@ interface ChipProps {
 }
 
 const chipSizing = {
-  sm: { icon: 19, padV: 4, padR: 12, text: 14.5 as const, border: 2.5 },
-  md: { icon: 26, padV: 6, padR: 18, text: 19 as const, border: 3 },
+  sm: { icon: 18, padV: 4, padR: 10, text: 13.5 as const },
+  md: { icon: 23, padV: 6, padR: 14, text: 16.5 as const },
 };
 
 const CurrencyChip: React.FC<ChipProps & { children: React.ReactNode }> = ({
@@ -24,15 +24,9 @@ const CurrencyChip: React.FC<ChipProps & { children: React.ReactNode }> = ({
 }) => {
   const s = chipSizing[size];
   return (
-    <View
-      style={[
-        styles.chip,
-        { paddingVertical: s.padV, paddingRight: s.padR, borderWidth: s.border },
-        style,
-      ]}
-    >
+    <View style={[styles.chip, { paddingVertical: s.padV, paddingRight: s.padR }, style]}>
       {children}
-      <AppText variant="title" style={{ fontSize: s.text }}>
+      <AppText variant="bodyStrong" style={{ fontSize: s.text }}>
         {typeof value === 'number' ? value.toLocaleString() : value}
       </AppText>
     </View>
@@ -51,7 +45,6 @@ export const GemChip: React.FC<ChipProps> = (props) => (
   </CurrencyChip>
 );
 
-/** Plain pill with no icon — used for the distance readout in the run HUD. */
 export const TextPill: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = ({
   children,
   style,
@@ -61,15 +54,15 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: palette.navy500,
-    borderColor: alpha.white24,
+    gap: 7,
+    backgroundColor: 'rgba(8,21,43,0.72)',
+    borderWidth: 1,
+    borderColor: alpha.white14,
     borderRadius: radii.pill,
     paddingLeft: 5,
   },
   textPill: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderWidth: 2.5,
   },
 });

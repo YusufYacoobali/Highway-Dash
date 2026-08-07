@@ -23,6 +23,7 @@ export const useHasStarted = (): boolean => useTelemetryStore((s) => s.started);
 export const useNitroReady = (): boolean => useTelemetryStore((s) => s.nitroReady);
 export const useNitroActive = (): boolean => useTelemetryStore((s) => s.nitroActive);
 export const useRunEvent = (): RunEventId => useTelemetryStore((s) => s.event);
+export const useRunEventVariant = (): number => useTelemetryStore((s) => s.eventVariant);
 export const useRunEventRemaining = (): number => useTelemetryStore((s) => s.eventRemaining);
 export const useWorldTheme = (): WorldThemeId => useTelemetryStore((s) => s.theme);
 export const useRunIntensity = (): number => useTelemetryStore((s) => s.intensity);

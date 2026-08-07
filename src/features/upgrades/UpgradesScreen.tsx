@@ -11,7 +11,7 @@ import {
   upgradeCost,
 } from '@/domain/upgrades';
 import { AppText, CoinChip, MetaScreen, ScreenHeader } from '@/ui/components';
-import { alpha, palette, radii, softShadow, spacing } from '@/ui/theme';
+import { alpha, palette, radii, spacing } from '@/ui/theme';
 
 export interface UpgradesScreenProps {
   coins: number;
@@ -21,7 +21,6 @@ export interface UpgradesScreenProps {
   onBuy(upgradeId: UpgradeId): void;
 }
 
-/** Four parallel upgrade tracks, five levels each — the long-tail coin sink. */
 export const UpgradesScreen: React.FC<UpgradesScreenProps> = ({
   coins,
   car,
@@ -30,22 +29,15 @@ export const UpgradesScreen: React.FC<UpgradesScreenProps> = ({
   onBuy,
 }) => (
   <MetaScreen>
-    <ScreenHeader
-      title="UPGRADES"
-      onBack={onBack}
-      right={<CoinChip size="sm" value={coins} />}
-    />
+    <ScreenHeader title="Upgrades" onBack={onBack} right={<CoinChip size="sm" value={coins} />} />
 
     <View style={styles.equipped}>
-      <View style={[styles.carChip, { backgroundColor: car.bodyColor }]} />
-      <View>
-        <AppText variant="caption" color={palette.inkMuted}>
-          EQUIPPED
-        </AppText>
-        <AppText variant="title" color={palette.ink}>
-          {car.name}
-        </AppText>
+      <View style={[styles.carAccent, { backgroundColor: car.bodyColor }]} />
+      <View style={styles.equippedText}>
+        <AppText variant="caption" color={alpha.white45}>TUNING</AppText>
+        <AppText variant="bodyStrong" color={palette.white}>{car.name}</AppText>
       </View>
+      <AppText variant="label" color={alpha.white55}>BUILD</AppText>
     </View>
 
     <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
@@ -57,45 +49,43 @@ export const UpgradesScreen: React.FC<UpgradesScreenProps> = ({
 
         return (
           <View key={upgrade.id} style={styles.row}>
-            <View style={styles.rowTop}>
-              <View style={[styles.icon, { backgroundColor: upgrade.color }]} />
-              <View style={styles.rowText}>
-                <AppText variant="title" color={palette.ink}>
-                  {upgrade.label}
-                </AppText>
-                <AppText variant="body" color={palette.inkMuted}>
-                  {upgrade.description}
-                </AppText>
+            <View style={[styles.iconMark, { backgroundColor: upgrade.color }]} />
+            <View style={styles.rowContent}>
+              <View style={styles.rowTop}>
+                <View style={styles.rowText}>
+                  <AppText variant="bodyStrong" color={palette.white}>{upgrade.label}</AppText>
+                  <AppText variant="body" color={alpha.white55}>{upgrade.description}</AppText>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={maxed ? `${upgrade.label} maxed` : `Upgrade ${upgrade.label} for ${cost} coins`}
+                  accessibilityState={{ disabled: maxed || !affordable }}
+                  disabled={maxed || !affordable}
+                  onPress={() => onBuy(upgrade.id)}
+                  style={({ pressed }) => [
+                    styles.buyButton,
+                    maxed || !affordable ? styles.buyDisabled : styles.buyActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <AppText variant="label" color={maxed || !affordable ? alpha.white45 : palette.ink}>
+                    {maxed ? 'MAX' : cost.toLocaleString()}
+                  </AppText>
+                </Pressable>
               </View>
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={maxed ? `${upgrade.label} maxed` : `Upgrade ${upgrade.label} for ${cost} coins`}
-                accessibilityState={{ disabled: maxed || !affordable }}
-                disabled={maxed || !affordable}
-                onPress={() => onBuy(upgrade.id)}
-                style={({ pressed }) => [
-                  styles.buyButton,
-                  { backgroundColor: maxed || !affordable ? palette.frostAlt : palette.green },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <AppText variant="label" color={maxed || !affordable ? palette.slate : palette.white}>
-                  {maxed ? 'MAX' : cost.toLocaleString()}
-                </AppText>
-              </Pressable>
-            </View>
-
-            <View style={styles.pips}>
-              {Array.from({ length: MAX_UPGRADE_LEVEL }, (_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.pip,
-                    { backgroundColor: index < level ? upgrade.color : alpha.inkTint12 },
-                  ]}
-                />
-              ))}
+              <View style={styles.pips}>
+                {Array.from({ length: MAX_UPGRADE_LEVEL }, (_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.pip,
+                      { backgroundColor: index < level ? upgrade.color : alpha.white08 },
+                    ]}
+                  />
+                ))}
+              </View>
             </View>
           </View>
         );
@@ -106,41 +96,39 @@ export const UpgradesScreen: React.FC<UpgradesScreenProps> = ({
 
 const styles = StyleSheet.create({
   equipped: {
-    marginHorizontal: 14,
-    marginBottom: 14,
-    backgroundColor: alpha.white75,
-    borderRadius: radii.lg,
-    paddingVertical: 12,
-    paddingHorizontal: 15,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 13,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: alpha.white08,
   },
-  carChip: {
-    width: 46,
-    height: 62,
-    borderRadius: radii.md,
-    borderWidth: 3,
-    borderColor: 'rgba(20,33,61,0.35)',
-  },
-  list: { paddingHorizontal: 14, paddingBottom: 40, gap: 11 },
+  carAccent: { width: 5, height: 34, borderRadius: radii.pill },
+  equippedText: { flex: 1 },
+  list: { paddingHorizontal: 16, paddingBottom: 40 },
   row: {
-    backgroundColor: palette.white,
-    borderRadius: 20,
-    padding: 13,
-    ...softShadow(5),
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: alpha.white08,
   },
+  iconMark: { width: 4, borderRadius: radii.pill },
+  rowContent: { flex: 1 },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   rowText: { flex: 1 },
-  icon: { width: 42, height: 42, borderRadius: radii.md },
   buyButton: {
-    borderRadius: radii.md,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    minWidth: 66,
+    borderRadius: radii.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    minWidth: 64,
     alignItems: 'center',
   },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.96 }] },
+  buyActive: { backgroundColor: palette.gold },
+  buyDisabled: { backgroundColor: alpha.white08 },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.96 }] },
   pips: { flexDirection: 'row', gap: 5, marginTop: spacing.md },
-  pip: { flex: 1, height: 10, borderRadius: 5 },
+  pip: { flex: 1, height: 5, borderRadius: 3 },
 });
