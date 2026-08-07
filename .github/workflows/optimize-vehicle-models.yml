@@ -1,0 +1,40 @@
+name: Optimize vehicle models
+
+on:
+  push:
+    paths:
+      - 'assets/new-models/**'
+      - 'scripts/optimize-vehicle-models.mjs'
+      - '.github/workflows/optimize-vehicle-models.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install optimizer
+        run: npm install --no-save --ignore-scripts @gltf-transform/core @gltf-transform/extensions @gltf-transform/functions meshoptimizer sharp
+
+      - name: Build mobile GLBs
+        run: node scripts/optimize-vehicle-models.mjs
+
+      - name: Commit optimized models
+        run: |
+          if git diff --quiet -- assets/game-models; then
+            echo 'No model changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/game-models
+          git commit -m 'Build mobile vehicle models'
+          git push
