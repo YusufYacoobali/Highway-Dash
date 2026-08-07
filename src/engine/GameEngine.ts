@@ -37,6 +37,7 @@ import type {
   VehicleObject,
 } from './types';
 import { VehicleWorkshop } from './vehicles/VehicleWorkshop';
+import { PLAYER_MODEL_ID } from './vehicles/vehicleModelConfig';
 import { buildRoad } from './world/RoadBuilder';
 import { buildScenery } from './world/SceneryBuilder';
 import { buildSky } from './world/SkyBuilder';
@@ -113,6 +114,7 @@ export class GameEngine {
     this.player = this.workshop.create({
       silhouette: car.silhouette,
       livery: { body: car.bodyColor, roof: car.roofColor },
+      modelId: PLAYER_MODEL_ID,
       recolor: true,
     });
     this.player.position.set(0, 0, -2);
@@ -178,6 +180,7 @@ export class GameEngine {
       car.silhouette,
       { body: car.bodyColor, roof: car.roofColor },
       true,
+      PLAYER_MODEL_ID,
     );
   }
 
