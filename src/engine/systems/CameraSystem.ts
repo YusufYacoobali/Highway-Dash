@@ -10,17 +10,17 @@ const FOV_RATE = 3;
 const FOV_SPEED_FLOOR_KMH = 120;
 const MAX_SPEED_FOV_BOOST = 8;
 
-/**
- * Chase camera. Nitro widens the lens and shoves the camera back — the single
- * most important piece of game feel in the whole build, and the reason this is
- * a system rather than a couple of lines in the render loop.
- */
+/** Chase camera for normal play and attract mode. */
 export class CameraSystem implements GameSystem {
   readonly name = 'camera';
 
   constructor(private readonly camera: PerspectiveCamera) {}
 
   update({ state, player, dt }: SystemContext): void {
+    // CrashSequence owns the camera during a wreck. The normal chase camera
+    // used to run afterwards and immediately erase the crash punch-in/shake.
+    if (state.crashed) return;
+
     const shake = state.cameraShake > 0 ? (Math.random() - 0.5) * state.cameraShake : 0;
     state.cameraShake = Math.max(0, state.cameraShake - dt * SHAKE_DECAY);
 
