@@ -105,13 +105,9 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     };
     loop();
 
-    // Decode glTF asynchronously, but never hot-swap scene objects in the
-    // middle of an active run. If decoding finishes on the menu we can apply
-    // immediately; otherwise the next mode/run reset applies it synchronously.
-    void engine.prepareHighDetailModels().then((ready) => {
-      if (!ready || engineRef.current !== engine) return;
-      if (latest.current.mode === 'attract') engine.activateHighDetailModels();
-    });
+    // Decode only. Never mutate the live scene when async decoding completes;
+    // activation happens during an explicit mode/run reset below.
+    void engine.prepareHighDetailModels();
   }, []);
 
   useEffect(
@@ -138,8 +134,8 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     if (!engine) return;
 
     engine.setMode(mode);
-    // If glTF decoding completed during the previous run, apply it now while
-    // all systems have just reset and before the next animation frame.
+    // If glTF decoding has completed, apply it only here: systems have just
+    // reset and no async hot-swap can corrupt the live menu/first run.
     engine.activateHighDetailModels();
   }, [mode, runToken]);
 
