@@ -31,6 +31,7 @@ export function buildRoad(scene: Scene): ScrollBand[] {
     new PlaneGeometry(400, ROAD_LENGTH),
     new MeshLambertMaterial({ color: 0x57b94a }),
   );
+  grass.name = 'world-ground';
   grass.rotation.x = -Math.PI / 2;
   grass.position.set(0, -0.06, -180);
   scene.add(grass);
@@ -39,6 +40,7 @@ export function buildRoad(scene: Scene): ScrollBand[] {
     new PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH),
     new MeshLambertMaterial({ color: 0x41454c }),
   );
+  asphalt.name = 'world-asphalt';
   asphalt.rotation.x = -Math.PI / 2;
   asphalt.position.set(0, 0, -180);
   scene.add(asphalt);
@@ -46,6 +48,7 @@ export function buildRoad(scene: Scene): ScrollBand[] {
   const shoulderMaterial = new MeshLambertMaterial({ color: 0xf2f1ec });
   for (const x of [-ROAD_WIDTH / 2 + 0.32, ROAD_WIDTH / 2 - 0.32]) {
     const shoulder = new Mesh(new PlaneGeometry(0.42, ROAD_LENGTH), shoulderMaterial);
+    shoulder.name = 'world-shoulder';
     shoulder.rotation.x = -Math.PI / 2;
     shoulder.position.set(x, 0.02, -180);
     scene.add(shoulder);

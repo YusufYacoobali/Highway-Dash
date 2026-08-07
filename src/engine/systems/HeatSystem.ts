@@ -3,10 +3,12 @@ import type { GameSystem, RunState, SystemContext } from '@/engine/types';
 
 export interface HeatObserver {
   onStarGained(stars: number): void;
-  onBusted(): void;
 }
 
-/** Wanted heat now comes only from risky near-misses; there is no police chase. */
+/**
+ * Heat is earned by risky driving and decays when the player calms down. Five
+ * stars now means maximum police pressure/roadblocks, never an invisible bust timer.
+ */
 export class HeatSystem implements GameSystem {
   readonly name = 'heat';
 
@@ -23,12 +25,7 @@ export class HeatSystem implements GameSystem {
       state.secondsSinceNearMiss = 0;
     }
 
-    if (state.stars >= HEAT.maxStars) {
-      state.secondsAtMaxStars += dt;
-      if (state.secondsAtMaxStars > HEAT.bustSeconds) this.observer.onBusted();
-    } else {
-      state.secondsAtMaxStars = 0;
-    }
+    state.secondsAtMaxStars = state.stars >= HEAT.maxStars ? state.secondsAtMaxStars + dt : 0;
   }
 
   registerNearMiss(state: RunState): void {

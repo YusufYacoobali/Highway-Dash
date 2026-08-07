@@ -1,17 +1,21 @@
 import * as Haptics from 'expo-haptics';
 
-export type FeedbackCue = 'tap' | 'nearMiss' | 'coin' | 'star' | 'crash' | 'reward';
+export type FeedbackCue =
+  | 'tap'
+  | 'nearMiss'
+  | 'coin'
+  | 'star'
+  | 'crash'
+  | 'reward'
+  | 'ram'
+  | 'event';
 
 export interface FeedbackService {
   play(cue: FeedbackCue): void;
   setEnabled(enabled: boolean): void;
 }
 
-/**
- * Thin, fire-and-forget haptics layer. Every call is deliberately unawaited —
- * a dropped buzz must never stall a frame — and unsupported devices simply
- * swallow the promise rejection.
- */
+/** Fire-and-forget haptics. A dropped buzz must never stall the render loop. */
 export class HapticsService implements FeedbackService {
   private enabled = true;
 
@@ -33,8 +37,10 @@ export class HapticsService implements FeedbackService {
         void Haptics.selectionAsync().catch(noop);
         break;
       case 'star':
+      case 'event':
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(noop);
         break;
+      case 'ram':
       case 'crash':
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(noop);
         break;

@@ -17,6 +17,7 @@ import {
   NITRO,
   ROAD_WIDTH,
   SCORING,
+  SLOW_MO,
   STEER_LIMIT,
 } from './config';
 import { CameraSystem } from './systems/CameraSystem';
@@ -24,9 +25,13 @@ import { CrashSequence } from './systems/CrashSequence';
 import { HeatSystem } from './systems/HeatSystem';
 import { PickupSystem } from './systems/PickupSystem';
 import { PlayerSystem } from './systems/PlayerSystem';
+import { PoliceSystem } from './systems/PoliceSystem';
+import { RunDirectorSystem } from './systems/RunDirectorSystem';
 import { ScoreSystem } from './systems/ScoreSystem';
+import { SpeedFxSystem } from './systems/SpeedFxSystem';
 import { TrafficSystem } from './systems/TrafficSystem';
 import { WorldScrollSystem } from './systems/WorldScrollSystem';
+import { WorldThemeSystem } from './systems/WorldThemeSystem';
 import { TelemetryPublisher } from './TelemetryPublisher';
 import type {
   EngineEvents,
@@ -44,14 +49,13 @@ import { buildSky } from './world/SkyBuilder';
 
 const MAX_FRAME_DELTA = 0.05;
 const SPEED_RESPONSE = 4.4;
-/** The run already feels fast before the player makes the first move. */
-const IDLE_RUN_SPEED = 56;
+const IDLE_RUN_SPEED = 50;
 
 function createRunState(mode: EngineMode): RunState {
   return {
     mode,
     elapsed: 0,
-    speed: mode === 'run' ? 48 : ATTRACT_SPEED,
+    speed: mode === 'run' ? IDLE_RUN_SPEED : ATTRACT_SPEED,
     steerTarget: 0,
     x: 0,
     distance: 0,
@@ -71,6 +75,15 @@ function createRunState(mode: EngineMode): RunState {
     started: false,
     crashed: false,
     cameraShake: 0,
+    slowMoRemaining: 0,
+    slowMoScale: 1,
+    event: 'cruise',
+    eventRemaining: 0,
+    eventSerial: 0,
+    theme: 'sunset',
+    intensity: 0,
+    trafficIntensity: 0.48,
+    policePressure: 0,
   };
 }
 
@@ -122,17 +135,27 @@ export class GameEngine {
 
     this.heatSystem = new HeatSystem({
       onStarGained: (stars) => this.events.emit('starGained', { stars }),
-      onBusted: () => this.crash('BUSTED'),
     });
     this.crashSequence = new CrashSequence(this.camera);
     this.telemetry = new TelemetryPublisher((snapshot) => this.events.emit('telemetry', snapshot));
 
+    const director = new RunDirectorSystem({
+      onEventStarted: (event, theme) => this.events.emit('eventStarted', { event, theme }),
+      onThemeChanged: (theme) => this.events.emit('themeChanged', { theme }),
+    });
+    const worldTheme = new WorldThemeSystem(this.scene);
+    const police = new PoliceSystem(this.scene, this.workshop);
+    const speedFx = new SpeedFxSystem(this.scene, this.player);
+
     this.systems = [
+      director,
       new PlayerSystem(),
       new WorldScrollSystem(bands),
+      worldTheme,
       new TrafficSystem(this.scene, this.workshop, {
         onNearMiss: () => this.handleNearMiss(),
         onImpact: () => this.crash('SMASHED'),
+        onRam: () => this.handleRam(),
       }),
       new PickupSystem(this.scene, {
         onCoinCollected: (value) => {
@@ -142,6 +165,8 @@ export class GameEngine {
       }),
       this.scoreSystem,
       this.heatSystem,
+      police,
+      speedFx,
       new CameraSystem(this.camera),
     ];
 
@@ -196,9 +221,10 @@ export class GameEngine {
     if (state.nitroCooldown > 0) return false;
 
     state.nitroRemaining = this.tuning.nitroSeconds;
-    state.nitroCooldown = this.tuning.nitroSeconds + NITRO.cooldownSeconds;
+    const cooldown = state.event === 'nitroRush' ? NITRO.frenzyCooldownSeconds : NITRO.cooldownSeconds;
+    state.nitroCooldown = this.tuning.nitroSeconds + cooldown;
     state.started = true;
-    state.cameraShake = Math.max(state.cameraShake, 0.7);
+    state.cameraShake = Math.max(state.cameraShake, 0.9);
     this.events.emit('nitroFired', {});
     return true;
   }
@@ -219,14 +245,20 @@ export class GameEngine {
 
   update(rawDt: number): void {
     if (this.disposed) return;
-    const dt = Math.min(MAX_FRAME_DELTA, rawDt);
+    const wallDt = Math.min(MAX_FRAME_DELTA, rawDt);
 
     if (this.state.crashed) {
-      this.updateCrash(dt);
+      this.updateCrash(wallDt);
       return;
     }
 
-    this.state.elapsed += dt;
+    const slowScale = this.state.slowMoRemaining > 0 ? this.state.slowMoScale : 1;
+    const dt = wallDt * slowScale;
+    this.state.slowMoRemaining = Math.max(0, this.state.slowMoRemaining - wallDt);
+    if (this.state.slowMoRemaining <= 0) this.state.slowMoScale = 1;
+
+    // Event/run timers remain real time; only motion receives the cinematic time scale.
+    this.state.elapsed += wallDt;
     this.advanceSpeed(dt);
     this.state.distance += this.state.speed * dt;
     this.state.topSpeedKmh = Math.max(
@@ -235,7 +267,7 @@ export class GameEngine {
     );
 
     this.runSystems(dt, this.state.speed * dt);
-    if (this.state.mode === 'run') this.telemetry.update(this.state, dt);
+    if (this.state.mode === 'run') this.telemetry.update(this.state, wallDt);
   }
 
   dispose(): void {
@@ -269,7 +301,7 @@ export class GameEngine {
       return;
     }
 
-    const rampProgress = Math.min(1, state.elapsed / Math.max(16, tuning.rampSeconds));
+    const rampProgress = Math.min(1, state.elapsed / Math.max(60, tuning.rampSeconds));
     const cruise = tuning.baseSpeed + rampProgress * tuning.speedGain;
     const target = state.nitroRemaining > 0 ? cruise * tuning.nitroMultiplier : cruise;
 
@@ -299,7 +331,16 @@ export class GameEngine {
   private handleNearMiss(): void {
     this.scoreSystem.registerNearMiss(this.state);
     this.heatSystem.registerNearMiss(this.state);
+    this.state.slowMoRemaining = SLOW_MO.nearMissSeconds;
+    this.state.slowMoScale = this.state.combo >= 5 ? SLOW_MO.hugeNearMissScale : SLOW_MO.nearMissScale;
     this.events.emit('nearMiss', { combo: this.state.combo, stars: this.state.stars });
+  }
+
+  private handleRam(): void {
+    this.scoreSystem.registerRam(this.state);
+    this.state.slowMoRemaining = SLOW_MO.ramSeconds;
+    this.state.slowMoScale = SLOW_MO.ramScale;
+    this.events.emit('trafficRammed', { combo: this.state.combo });
   }
 
   private crash(cause: RunResult['cause']): void {

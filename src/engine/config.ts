@@ -20,38 +20,42 @@ export const CAMERA = {
   distance: 14.6,
   followFactor: 0.62,
   followRate: 11,
-  nitroFovBoost: 16,
-  nitroPullback: 2,
+  nitroFovBoost: 18,
+  nitroPullback: 2.6,
 } as const;
 
+/**
+ * Difficulty is deliberately broad now. The RunDirector supplies short waves
+ * of pressure instead of continuously turning every knob upward at once.
+ */
 export const TRAFFIC = {
   minSpeed: 10,
-  maxSpeed: 18,
+  maxSpeed: 19,
   playerHalfLength: 2.5,
-  collisionWidthScale: 0.84,
-  truckCollisionWidthScale: 0.76,
-  laneJitter: 0.18,
-  truckLaneJitter: 0.04,
-  baseInterval: 1.35,
-  minInterval: 0.28,
-  difficultyRampSeconds: 50,
+  collisionWidthScale: 0.82,
+  truckCollisionWidthScale: 0.74,
+  laneJitter: 0.14,
+  truckLaneJitter: 0.03,
+  baseInterval: 1.6,
+  minInterval: 0.62,
+  difficultyRampSeconds: 180,
   attractInterval: 1.3,
-  doubleSpawnAfter: 14,
-  doubleSpawnBaseChance: 0.08,
-  doubleSpawnMaxChance: 0.38,
-  tripleSpawnAfter: 32,
-  tripleSpawnMaxChance: 0.15,
-  runPrefillCount: 5,
+  doubleSpawnAfter: 38,
+  doubleSpawnBaseChance: 0.03,
+  doubleSpawnMaxChance: 0.22,
+  tripleSpawnAfter: 105,
+  tripleSpawnMaxChance: 0.055,
+  runPrefillCount: 4,
   attractPrefillCount: 5,
-  /** Meshy test GLBs are much heavier than the original low-poly pack. */
-  maxActiveRun: 10,
+  /** Meshy GLBs are heavy, so spectacle comes from choreography rather than count. */
+  maxActiveRun: 9,
   maxActiveAttract: 6,
-  ramSideSpeedMin: 10,
-  ramSideSpeedMax: 16,
-  ramLiftMin: 8,
-  ramLiftMax: 13,
-  ramForwardSpeedMin: 22,
-  ramForwardSpeedMax: 32,
+  ramSideSpeedMin: 12,
+  ramSideSpeedMax: 19,
+  ramLiftMin: 9,
+  ramLiftMax: 15,
+  ramForwardSpeedMin: 26,
+  ramForwardSpeedMax: 38,
 } as const;
 
 export const PICKUPS = {
@@ -59,28 +63,47 @@ export const PICKUPS = {
   runLengthMax: 10,
   spacing: 3.6,
   arcChance: 0,
-  spawnInterval: 1.45,
+  spawnInterval: 1.55,
   value: 5,
   height: 0.68,
   arcHeight: 0,
 } as const;
 
+/** Wanted is a spectacle/chase system now, not an invisible countdown to death. */
 export const HEAT = {
   maxStars: 5,
-  nearMissesPerStar: 4,
-  cooldownSeconds: 7,
-  bustSeconds: 12,
+  nearMissesPerStar: 5,
+  cooldownSeconds: 12,
+  policeStartsAt: 2,
+  roadblocksAt: 4,
 } as const;
 
 export const SCORING = {
-  nearMissCoins: 2,
-  comboWindow: 1.6,
+  nearMissCoins: 3,
+  comboWindow: 2.15,
   distanceScale: 2.2,
   speedToKmh: 3.9,
 } as const;
 
 export const NITRO = {
-  cooldownSeconds: 3.5,
+  cooldownSeconds: 4.2,
+  frenzyCooldownSeconds: 0.8,
+} as const;
+
+export const SLOW_MO = {
+  nearMissSeconds: 0.11,
+  nearMissScale: 0.58,
+  hugeNearMissScale: 0.42,
+  ramSeconds: 0.075,
+  ramScale: 0.34,
+} as const;
+
+export const RUN_DIRECTOR = {
+  graceSeconds: 13,
+  endlessDifficultySeconds: 210,
+  eventMinSeconds: 8,
+  eventMaxSeconds: 15,
+  recoverySeconds: 7,
 } as const;
 
 export const CRASH = {

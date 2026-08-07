@@ -9,13 +9,14 @@ import { alpha, palette } from '@/ui/theme';
 const STAR_SLOTS = Array.from({ length: HEAT.maxStars }, (_, i) => i);
 
 function heatLabel(stars: number): string {
-  if (stars >= 5) return 'PULL OVER!';
+  if (stars >= 5) return 'MAX HEAT';
+  if (stars >= 4) return 'ROADBLOCKS';
   if (stars >= 3) return 'COPS ON YOU';
+  if (stars >= 2) return 'SIRENS';
   if (stars >= 1) return 'HEATING UP';
   return 'CRUISING';
 }
 
-/** Wanted level readout. Subscribes only to `stars` so it repaints rarely. */
 export const WantedMeter: React.FC = () => {
   const stars = useWantedStars();
 

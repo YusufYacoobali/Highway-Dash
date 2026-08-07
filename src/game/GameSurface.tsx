@@ -23,6 +23,9 @@ export interface GameSurfaceProps {
   onTelemetry(snapshot: Telemetry): void;
   onNearMiss(payload: EngineEvents['nearMiss']): void;
   onStarGained(payload: EngineEvents['starGained']): void;
+  onCoinCollected(payload: EngineEvents['coinCollected']): void;
+  onTrafficRammed(payload: EngineEvents['trafficRammed']): void;
+  onEventStarted(payload: EngineEvents['eventStarted']): void;
   onCrash(result: RunResult): void;
   handleRef?: React.RefObject<GameSurfaceHandle | null>;
 }
@@ -36,6 +39,9 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   onTelemetry,
   onNearMiss,
   onStarGained,
+  onCoinCollected,
+  onTrafficRammed,
+  onEventStarted,
   onCrash,
   handleRef,
 }) => {
@@ -49,8 +55,24 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   const latest = useRef({ mode, car, tuning, runToken });
   latest.current = { mode, car, tuning, runToken };
 
-  const callbacks = useRef({ onTelemetry, onNearMiss, onStarGained, onCrash });
-  callbacks.current = { onTelemetry, onNearMiss, onStarGained, onCrash };
+  const callbacks = useRef({
+    onTelemetry,
+    onNearMiss,
+    onStarGained,
+    onCoinCollected,
+    onTrafficRammed,
+    onEventStarted,
+    onCrash,
+  });
+  callbacks.current = {
+    onTelemetry,
+    onNearMiss,
+    onStarGained,
+    onCoinCollected,
+    onTrafficRammed,
+    onEventStarted,
+    onCrash,
+  };
 
   const handleContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -72,16 +94,17 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     engine.events.on('telemetry', (snapshot) => callbacks.current.onTelemetry(snapshot));
     engine.events.on('nearMiss', (payload) => callbacks.current.onNearMiss(payload));
     engine.events.on('starGained', (payload) => callbacks.current.onStarGained(payload));
+    engine.events.on('coinCollected', (payload) => callbacks.current.onCoinCollected(payload));
+    engine.events.on('trafficRammed', (payload) => callbacks.current.onTrafficRammed(payload));
+    engine.events.on('eventStarted', (payload) => callbacks.current.onEventStarted(payload));
     engine.events.on('crashed', (result) => callbacks.current.onCrash(result));
 
-    // The menu is now static artwork, so we can safely wait for the active test
-    // GLBs here. This avoids showing procedural/old cars during the first run.
+    // The menu is static artwork, so wait for the active mobile GLBs before play.
     const modelsReady = await engine.prepareHighDetailModels();
     if (engineRef.current !== engine) return;
     if (modelsReady) engine.activateHighDetailModels();
 
-    // Props may have changed while the GLBs decoded (for example Play was
-    // tapped). Reconcile once before the first rendered frame.
+    // Props may have changed while GLBs decoded (for example Play was tapped).
     const resolved = latest.current;
     engine.setTuning(resolved.tuning);
     engine.setPlayerCar(resolved.car);

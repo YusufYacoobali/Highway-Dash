@@ -92,7 +92,9 @@ function buildSkyline(): Mesh[] {
   return perColor.flatMap((geometries, index) => {
     const merged = geometries.length > 0 ? mergeGeometries(geometries) : null;
     if (!merged) return [];
-    return [new Mesh(merged, new MeshBasicMaterial({ color: SKYLINE_COLORS[index], fog: false }))];
+    const mesh = new Mesh(merged, new MeshBasicMaterial({ color: SKYLINE_COLORS[index], fog: false }));
+    mesh.name = `world-skyline-${index}`;
+    return [mesh];
   });
 }
 
@@ -114,21 +116,26 @@ function buildClouds(): Mesh | null {
   }
 
   const merged = mergeGeometries(puffs);
-  return merged ? new Mesh(merged, new MeshBasicMaterial({ color: 0xffe7c9, fog: false })) : null;
+  if (!merged) return null;
+  const mesh = new Mesh(merged, new MeshBasicMaterial({ color: 0xffe7c9, fog: false }));
+  mesh.name = 'world-clouds';
+  return mesh;
 }
 
-/** Adds the static backdrop. Nothing here scrolls, so no handles are returned. */
+/** Adds the static backdrop. ThemeSystem tints/hides these cheap shared meshes. */
 export function buildSky(scene: Scene): void {
   const dome = new Mesh(
     new SphereGeometry(280, 16, 10),
     new MeshBasicMaterial({ map: buildGradientTexture(SKY_STOPS), side: BackSide, fog: false }),
   );
+  dome.name = 'world-sky-dome';
   scene.add(dome);
 
   const sun = new Mesh(
     new CircleGeometry(13, 20),
     new MeshBasicMaterial({ color: 0xfff2c2, fog: false }),
   );
+  sun.name = 'world-sun';
   sun.position.set(randomSign() * 6, 6, -220);
   scene.add(sun);
 
