@@ -6,10 +6,10 @@ import type { VehicleSilhouette } from '@/domain/cars';
 import type { VehicleBodyProvider, VehicleBodySpec } from '@/engine/types';
 import { readAssetArrayBuffer } from './readAssetArrayBuffer';
 import {
-  ACTIVE_VEHICLE_MODEL_MAP,
   ACTIVE_VEHICLE_SILHOUETTES,
   MODEL_LIBRARY,
   PRESERVE_AUTHORED_MODEL_COLORS,
+  activeModelId,
   activeModelSpec,
   type VehicleModelId,
   type VehicleModelSpec,
@@ -33,7 +33,7 @@ export class GltfBodyProvider implements VehicleBodyProvider {
     const loader = new GLTFLoader();
     const preparedById = new Map<VehicleModelId, PreparedModel>();
     const activeIds = Array.from(
-      new Set(Object.values(ACTIVE_VEHICLE_MODEL_MAP) as VehicleModelId[]),
+      new Set(ACTIVE_VEHICLE_SILHOUETTES.map((silhouette) => activeModelId(silhouette))),
     );
 
     await Promise.all(
@@ -52,8 +52,7 @@ export class GltfBodyProvider implements VehicleBodyProvider {
 
     const models = new Map<VehicleSilhouette, PreparedModel>();
     for (const silhouette of ACTIVE_VEHICLE_SILHOUETTES) {
-      const modelId = ACTIVE_VEHICLE_MODEL_MAP[silhouette];
-      const prepared = preparedById.get(modelId);
+      const prepared = preparedById.get(activeModelId(silhouette));
       if (prepared) models.set(silhouette, prepared);
     }
 
