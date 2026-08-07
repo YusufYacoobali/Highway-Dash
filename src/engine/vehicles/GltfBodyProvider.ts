@@ -5,12 +5,14 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { VehicleSilhouette } from '@/domain/cars';
 import type { VehicleBodyProvider, VehicleBodySpec } from '@/engine/types';
 import { readAssetArrayBuffer } from './readAssetArrayBuffer';
+import { restoreEmbeddedGlbTextures } from './restoreGlbTextures';
 import {
   ACTIVE_MODEL_POOL,
   MODEL_LIBRARY,
   PLAYER_MODEL_ID,
   PRESERVE_AUTHORED_MODEL_COLORS,
   fallbackModelSpec,
+  type VehicleForwardAxis,
   type VehicleModelId,
   type VehicleModelSpec,
 } from './vehicleModelConfig';
@@ -41,6 +43,12 @@ export class GltfBodyProvider implements VehicleBodyProvider {
           const asset = Asset.fromModule(spec.module);
           const buffer = await readAssetArrayBuffer(asset);
           const gltf = await loader.parseAsync(buffer, '');
+
+          // GLTFLoader's geometry path works in React Native, but embedded GLB
+          // images normally go through browser image APIs. Re-upload the baked
+          // Meshy texture maps through Expo Asset so they survive on expo-gl.
+          await restoreEmbeddedGlbTextures(buffer, gltf.parser, modelId);
+
           models.set(modelId, prepareModel(gltf.scene, spec));
         } catch (error) {
           console.warn(`[HighwayDash] Failed to load vehicle model: ${modelId}`, error);
@@ -73,13 +81,20 @@ export class GltfBodyProvider implements VehicleBodyProvider {
   }
 }
 
-/** Normalise arbitrary test GLBs into the same engine coordinate space. */
+/**
+ * Normalises arbitrary GLBs into engine space. Meshy currently exports these
+ * cars with the long axis on X; using a configurable forward axis prevents us
+ * from accidentally treating their width as their length again.
+ */
 function prepareModel(root: Object3D, spec: VehicleModelSpec): PreparedModel {
   const bounds = new Box3().setFromObject(root);
   const size = bounds.getSize(new Vector3());
   const centre = bounds.getCenter(new Vector3());
+  const longitudinalIsX = spec.forwardAxis === '+x' || spec.forwardAxis === '-x';
+  const authoredLength = longitudinalIsX ? size.x : size.z;
+  const authoredWidth = longitudinalIsX ? size.z : size.x;
+  const scale = spec.targetLength / Math.max(0.001, authoredLength);
 
-  const scale = spec.targetLength / Math.max(0.001, size.z);
   root.scale.setScalar(scale);
   root.position.set(-centre.x * scale, -bounds.min.y * scale, -centre.z * scale);
   root.traverse((node) => {
@@ -88,7 +103,7 @@ function prepareModel(root: Object3D, spec: VehicleModelSpec): PreparedModel {
 
   const facing = new Group();
   facing.add(root);
-  facing.rotation.y = spec.yaw;
+  facing.rotation.y = yawToRoadForward(spec.forwardAxis);
 
   const prototype = new Group();
   prototype.add(facing);
@@ -96,9 +111,23 @@ function prepareModel(root: Object3D, spec: VehicleModelSpec): PreparedModel {
   return {
     prototype,
     length: spec.targetLength,
-    width: size.x * scale,
+    width: authoredWidth * scale,
     paintMaterialName: findPaintMaterialName(root),
   };
+}
+
+/** Engine traffic points toward -Z. */
+function yawToRoadForward(axis: VehicleForwardAxis): number {
+  switch (axis) {
+    case '+x':
+      return Math.PI / 2;
+    case '-x':
+      return -Math.PI / 2;
+    case '+z':
+      return Math.PI;
+    case '-z':
+      return 0;
+  }
 }
 
 function findPaintMaterialName(root: Object3D): string | null {
