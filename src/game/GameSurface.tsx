@@ -11,7 +11,6 @@ import type { EngineEvents, EngineMode, Telemetry } from '@/engine/types';
 
 export interface GameSurfaceHandle {
   fireNitro(): boolean;
-  /** Ends the run in progress and returns it so the caller can bank it. */
   retireRun(): RunResult | null;
 }
 
@@ -19,9 +18,7 @@ export interface GameSurfaceProps {
   mode: EngineMode;
   car: CarDefinition;
   tuning: RunTuning;
-  /** Incremented by the UI to force a fresh run. */
   runToken: number;
-  /** Freezes the simulation while a meta screen covers the scene. */
   paused?: boolean;
   onTelemetry(snapshot: Telemetry): void;
   onNearMiss(payload: EngineEvents['nearMiss']): void;
@@ -30,7 +27,6 @@ export interface GameSurfaceProps {
   handleRef?: React.RefObject<GameSurfaceHandle | null>;
 }
 
-/** Hosts the WebGL context and owns the render loop. */
 export const GameSurface: React.FC<GameSurfaceProps> = ({
   mode,
   car,
@@ -50,9 +46,6 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
-  // Native GL creation and glTF decoding are asynchronous. Always keep the
-  // latest gameplay props available so late native work cannot restore stale
-  // menu/run state.
   const latest = useRef({ mode, car, tuning, runToken });
   latest.current = { mode, car, tuning, runToken };
 
@@ -81,6 +74,19 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     engine.events.on('starGained', (payload) => callbacks.current.onStarGained(payload));
     engine.events.on('crashed', (result) => callbacks.current.onCrash(result));
 
+    // The menu is now static artwork, so we can safely wait for the active test
+    // GLBs here. This avoids showing procedural/old cars during the first run.
+    const modelsReady = await engine.prepareHighDetailModels();
+    if (engineRef.current !== engine) return;
+    if (modelsReady) engine.activateHighDetailModels();
+
+    // Props may have changed while the GLBs decoded (for example Play was
+    // tapped). Reconcile once before the first rendered frame.
+    const resolved = latest.current;
+    engine.setTuning(resolved.tuning);
+    engine.setPlayerCar(resolved.car);
+    engine.setMode(resolved.mode);
+
     let last = Date.now();
     let reportedFailure = false;
 
@@ -104,10 +110,6 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
       }
     };
     loop();
-
-    // Decode only. Never mutate the live scene when async decoding completes;
-    // activation happens during an explicit mode/run reset below.
-    void engine.prepareHighDetailModels();
   }, []);
 
   useEffect(
@@ -130,13 +132,7 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   }, [car]);
 
   useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
-
-    engine.setMode(mode);
-    // If glTF decoding has completed, apply it only here: systems have just
-    // reset and no async hot-swap can corrupt the live menu/first run.
-    engine.activateHighDetailModels();
+    engineRef.current?.setMode(mode);
   }, [mode, runToken]);
 
   useEffect(() => {
