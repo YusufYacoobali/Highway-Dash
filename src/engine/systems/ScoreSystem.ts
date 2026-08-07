@@ -1,12 +1,7 @@
 import { SCORING } from '@/engine/config';
 import type { GameSystem, SystemContext } from '@/engine/types';
 
-/**
- * Owns the combo economy: how long a combo survives, what a near-miss pays and
- * how the run's headline numbers accumulate. Keeping this separate from the
- * traffic geometry means the reward curve can be retuned without touching
- * anything that moves.
- */
+/** Owns the combo economy and short-term reward loop. */
 export class ScoreSystem implements GameSystem {
   readonly name = 'score';
 
@@ -23,8 +18,15 @@ export class ScoreSystem implements GameSystem {
     state.bestCombo = Math.max(state.bestCombo, state.combo);
     state.comboTimer = SCORING.comboWindow;
     state.secondsSinceNearMiss = 0;
-    state.cameraShake = 0.5;
-    state.coins += SCORING.nearMissCoins + Math.floor(state.combo / 3);
+    state.cameraShake = Math.max(state.cameraShake, state.combo >= 10 ? 0.85 : 0.5);
+    state.coins += SCORING.nearMissCoins + Math.floor(state.combo / 2);
+  }
+
+  registerRam(state: SystemContext['state']): void {
+    state.combo += 2;
+    state.bestCombo = Math.max(state.bestCombo, state.combo);
+    state.comboTimer = SCORING.comboWindow + 0.55;
+    state.coins += 8 + Math.floor(state.combo / 2);
   }
 
   registerCoins(state: SystemContext['state'], value: number): void {
