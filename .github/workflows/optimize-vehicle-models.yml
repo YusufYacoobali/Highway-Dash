@@ -6,6 +6,11 @@ on:
       - 'assets/new-models/**'
       - 'scripts/optimize-vehicle-models.mjs'
       - '.github/workflows/optimize-vehicle-models.yml'
+  pull_request:
+    paths:
+      - 'assets/new-models/**'
+      - 'scripts/optimize-vehicle-models.mjs'
+      - '.github/workflows/optimize-vehicle-models.yml'
   workflow_dispatch:
 
 permissions:
@@ -27,7 +32,15 @@ jobs:
       - name: Build mobile GLBs
         run: node scripts/optimize-vehicle-models.mjs
 
+      - name: Upload optimized models
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-models
+          path: assets/game-models/*.glb
+          if-no-files-found: error
+
       - name: Commit optimized models
+        if: github.event_name != 'pull_request'
         run: |
           if git diff --quiet -- assets/game-models; then
             echo 'No model changes.'
