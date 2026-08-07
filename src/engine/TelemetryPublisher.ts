@@ -27,12 +27,20 @@ export class TelemetryPublisher {
       stars: state.stars,
       started: state.started,
       nitroActive: state.nitroRemaining > 0,
-      nitroReady: state.nitroRemaining <= 0 && state.nitroCooldown <= 0,
+      nitroReady:
+        state.nitroRemaining <= 0 &&
+        state.nitroGraceRemaining <= 0 &&
+        state.nitroCooldown <= 0,
+      nitroRemaining: roundTenth(state.nitroRemaining),
+      nitroGraceActive: state.nitroGraceRemaining > 0,
+      nitroGraceRemaining: roundTenth(state.nitroGraceRemaining),
+      nitroSmashes: state.nitroSmashes,
       event: state.event,
       eventVariant: state.eventVariant,
       eventRemaining: Math.max(0, Math.ceil(state.eventRemaining)),
       theme: state.theme,
       intensity: Math.round(state.intensity * 100) / 100,
+      laneCount: state.laneCount,
     };
 
     if (this.last && isSame(this.last, next)) return;
@@ -46,6 +54,10 @@ export class TelemetryPublisher {
   }
 }
 
+function roundTenth(value: number): number {
+  return Math.max(0, Math.ceil(value * 10) / 10);
+}
+
 function isSame(a: Telemetry, b: Telemetry): boolean {
   return (
     a.kmh === b.kmh &&
@@ -56,10 +68,15 @@ function isSame(a: Telemetry, b: Telemetry): boolean {
     a.started === b.started &&
     a.nitroActive === b.nitroActive &&
     a.nitroReady === b.nitroReady &&
+    a.nitroRemaining === b.nitroRemaining &&
+    a.nitroGraceActive === b.nitroGraceActive &&
+    a.nitroGraceRemaining === b.nitroGraceRemaining &&
+    a.nitroSmashes === b.nitroSmashes &&
     a.event === b.event &&
     a.eventVariant === b.eventVariant &&
     a.eventRemaining === b.eventRemaining &&
     a.theme === b.theme &&
-    a.intensity === b.intensity
+    a.intensity === b.intensity &&
+    a.laneCount === b.laneCount
   );
 }
