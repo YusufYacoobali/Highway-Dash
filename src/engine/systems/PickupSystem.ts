@@ -1,7 +1,7 @@
 import { CylinderGeometry, Mesh, MeshLambertMaterial, Scene } from 'three';
 
 import { ObjectPool } from '@/core/ObjectPool';
-import { pickRandom, randomRange } from '@/core/math';
+import { randomRange } from '@/core/math';
 import { DESPAWN_Z, LANE_OFFSETS, PICKUPS, SPAWN_Z } from '@/engine/config';
 import type { GameSystem, RunEventId, SystemContext } from '@/engine/types';
 
