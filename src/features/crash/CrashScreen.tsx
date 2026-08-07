@@ -7,7 +7,7 @@ import { crashHeadline, crashSubtitle } from '@/domain/runResult';
 import { XP_PER_TIER } from '@/domain/season';
 import type { RunSummary } from '@/state/profileStore';
 import { AppText, ChunkyButton, CoinIcon, ProgressBar } from '@/ui/components';
-import { palette, radii, softShadow, spacing } from '@/ui/theme';
+import { alpha, palette, radii, spacing } from '@/ui/theme';
 
 export interface CrashScreenProps {
   summary: RunSummary;
@@ -19,11 +19,6 @@ export interface CrashScreenProps {
   onGarage(): void;
 }
 
-/**
- * Post-run summary. The layout is a deliberate funnel: the score is celebrated
- * first, the rewards land second, and the biggest, greenest control on screen
- * is the one that starts another run.
- */
 export const CrashScreen: React.FC<CrashScreenProps> = ({
   summary,
   bestDistance,
@@ -38,93 +33,68 @@ export const CrashScreen: React.FC<CrashScreenProps> = ({
 
   const stats = [
     { label: 'NEAR MISSES', value: `${run.nearMisses}` },
-    { label: 'TOP SPEED', value: `${run.topSpeed} KM/H` },
+    { label: 'TOP SPEED', value: `${run.topSpeed}` },
     { label: 'BEST COMBO', value: `x${run.bestCombo}` },
     { label: 'CAR', value: carName },
   ];
 
   return (
     <LinearGradient
-      colors={['rgba(8,22,45,0.55)', 'rgba(8,22,45,0.88)']}
+      colors={['rgba(5,15,33,0.60)', 'rgba(5,15,33,0.96)']}
       style={[
         StyleSheet.absoluteFill,
-        { paddingTop: insets.top + 30, paddingBottom: insets.bottom + spacing.lg },
+        { paddingTop: insets.top + 22, paddingBottom: insets.bottom + spacing.lg },
       ]}
     >
       <View style={styles.headline}>
         <AppText
-          variant="displayL"
+          variant="displayM"
           align="center"
           color={run.cause === 'BUSTED' ? palette.cyanIce : palette.redSoft}
-          emboss="rgba(8,22,45,0.85)"
           style={styles.headlineText}
         >
           {crashHeadline(run.cause)}
         </AppText>
-        <AppText variant="label" align="center" color="rgba(255,255,255,0.78)">
+        <AppText variant="body" align="center" color={alpha.white55}>
           {crashSubtitle(run.cause)}
         </AppText>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.cardTop}>
-          <View>
-            <AppText variant="caption" color={palette.inkFaint}>
-              DISTANCE
-            </AppText>
-            <View style={styles.distanceRow}>
-              <AppText variant="displayL" color={palette.ink} style={styles.distance}>
-                {run.distance.toLocaleString()}
-              </AppText>
-              <AppText variant="displayS" color={palette.ink}>
-                M
-              </AppText>
-            </View>
-          </View>
-          <View style={styles.bestBlock}>
-            <AppText variant="caption" color={palette.inkFaint} align="right">
-              {isNewBest ? 'NEW BEST' : 'BEST'}
-            </AppText>
-            <AppText variant="displayS" color={palette.goldDeep} align="right">
-              {`${bestDistance.toLocaleString()} M`}
-            </AppText>
-          </View>
+      <View style={styles.scoreBlock}>
+        <AppText variant="caption" color={alpha.white45} align="center">DISTANCE</AppText>
+        <View style={styles.distanceRow}>
+          <AppText variant="displayXL" color={palette.white} style={styles.distance}>
+            {run.distance.toLocaleString()}
+          </AppText>
+          <AppText variant="displayS" color={alpha.white55}>M</AppText>
         </View>
-
-        <View style={styles.statsGrid}>
-          {stats.map((stat) => (
-            <View key={stat.label} style={styles.statTile}>
-              <AppText variant="micro" color={palette.inkFaint}>
-                {stat.label}
-              </AppText>
-              <AppText variant="title" color={palette.ink} numberOfLines={1}>
-                {stat.value}
-              </AppText>
-            </View>
-          ))}
-        </View>
+        <AppText variant="label" color={isNewBest ? palette.gold : alpha.white45} align="center">
+          {isNewBest ? 'NEW PERSONAL BEST' : `BEST ${bestDistance.toLocaleString()} M`}
+        </AppText>
       </View>
 
-      <View style={styles.rewardRow}>
-        <View style={[styles.rewardCard, { borderColor: palette.gold }]}>
-          <CoinIcon size={27} />
-          <View>
-            <AppText variant="micro" color={palette.bluegrey}>
-              COINS
-            </AppText>
-            <AppText variant="title">{`+${payout.coins.toLocaleString()}`}</AppText>
+      <View style={styles.statsGrid}>
+        {stats.map((stat, index) => (
+          <View key={stat.label} style={[styles.stat, index % 2 === 0 && styles.statRightBorder]}>
+            <AppText variant="micro" color={alpha.white45}>{stat.label}</AppText>
+            <AppText variant="bodyStrong" color={palette.white} numberOfLines={1}>{stat.value}</AppText>
           </View>
-        </View>
+        ))}
+      </View>
 
-        <View style={[styles.rewardCard, styles.xpCard, { borderColor: palette.green }]}>
-          <AppText variant="micro" color={palette.bluegrey}>
-            SEASON XP
-          </AppText>
-          <View style={styles.xpRow}>
-            <ProgressBar progress={seasonXp / XP_PER_TIER} style={styles.xpBar} />
-            <AppText variant="bodyStrong" color={palette.greenSoft}>
-              {`+${payout.xp}`}
-            </AppText>
+      <View style={styles.rewards}>
+        <View style={styles.rewardLine}>
+          <View style={styles.rewardLabel}>
+            <CoinIcon size={23} />
+            <AppText variant="bodyStrong">COINS</AppText>
+          </View>
+          <AppText variant="title" color={palette.gold}>{`+${payout.coins.toLocaleString()}`}</AppText>
+        </View>
+        <View style={styles.rewardLine}>
+          <AppText variant="bodyStrong">SEASON XP</AppText>
+          <View style={styles.xpRight}>
+            <ProgressBar progress={seasonXp / XP_PER_TIER} height={6} style={styles.xpBar} />
+            <AppText variant="bodyStrong" color={palette.greenSoft}>{`+${payout.xp}`}</AppText>
           </View>
         </View>
       </View>
@@ -132,20 +102,16 @@ export const CrashScreen: React.FC<CrashScreenProps> = ({
       <View style={styles.spacer} />
 
       <View style={styles.actions}>
-        <ChunkyButton onPress={onReplay} tone="green" height={80} depth={8} shine>
-          <AppText variant="displayM" emboss="rgba(20,70,10,0.5)">
-            RUN IT BACK
-          </AppText>
+        <ChunkyButton onPress={onReplay} tone="green" height={68} shine>
+          <AppText variant="title">RUN IT BACK</AppText>
         </ChunkyButton>
 
         <View style={styles.secondaryRow}>
-          <ChunkyButton onPress={onMenu} tone="ghost" height={54} depth={0} style={styles.secondary}>
-            <AppText variant="title">MENU</AppText>
+          <ChunkyButton onPress={onMenu} tone="ghost" height={48} style={styles.secondary}>
+            <AppText variant="bodyStrong">MENU</AppText>
           </ChunkyButton>
-          <ChunkyButton onPress={onGarage} tone="gold" height={54} depth={5} style={styles.secondary}>
-            <AppText variant="title" color={palette.ink}>
-              GARAGE
-            </AppText>
+          <ChunkyButton onPress={onGarage} tone="ghost" height={48} style={styles.secondary}>
+            <AppText variant="bodyStrong" color={palette.gold}>GARAGE</AppText>
           </ChunkyButton>
         </View>
       </View>
@@ -155,58 +121,44 @@ export const CrashScreen: React.FC<CrashScreenProps> = ({
 
 const styles = StyleSheet.create({
   headline: { paddingHorizontal: 18 },
-  headlineText: { fontSize: 54, lineHeight: 56 },
-  card: {
-    marginTop: 18,
-    marginHorizontal: 18,
-    backgroundColor: palette.white,
-    borderRadius: 26,
-    padding: 17,
-    ...softShadow(10),
+  headlineText: { fontSize: 38, lineHeight: 43 },
+  scoreBlock: {
+    marginTop: 26,
+    alignItems: 'center',
   },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingBottom: 13,
-    borderBottomWidth: 3,
-    borderBottomColor: 'rgba(20,33,61,0.15)',
-    borderStyle: 'dashed',
-  },
-  distanceRow: { flexDirection: 'row', alignItems: 'baseline' },
-  distance: { fontSize: 40, lineHeight: 44 },
-  bestBlock: { alignItems: 'flex-end' },
+  distanceRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
+  distance: { fontSize: 68, lineHeight: 72 },
   statsGrid: {
+    marginTop: 24,
+    marginHorizontal: 20,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 9,
-    paddingTop: 13,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: alpha.white08,
   },
-  statTile: {
-    width: '48%',
-    flexGrow: 1,
-    backgroundColor: palette.frost,
-    borderRadius: 15,
-    paddingVertical: 9,
+  stat: {
+    width: '50%',
+    paddingVertical: 12,
     paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: alpha.white08,
   },
-  rewardRow: { flexDirection: 'row', gap: 10, marginTop: 12, marginHorizontal: 18 },
-  rewardCard: {
-    flex: 1,
+  statRightBorder: { borderRightWidth: 1, borderRightColor: alpha.white08 },
+  rewards: { marginHorizontal: 20, marginTop: 14 },
+  rewardLine: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
-    backgroundColor: palette.navy500,
-    borderWidth: 3,
-    borderRadius: radii.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 13,
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: alpha.white08,
   },
-  xpCard: { flexDirection: 'column', alignItems: 'stretch', gap: 4 },
-  xpRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rewardLabel: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  xpRight: { flexDirection: 'row', alignItems: 'center', gap: 9, width: '56%' },
   xpBar: { flex: 1 },
   spacer: { flex: 1, minHeight: spacing.lg },
-  actions: { paddingHorizontal: 18, gap: 11 },
+  actions: { paddingHorizontal: 18, gap: 10 },
   secondaryRow: { flexDirection: 'row', gap: 10 },
-  secondary: { flex: 1 },
+  secondary: { flex: 1, borderRadius: radii.lg },
 });
