@@ -1,15 +1,9 @@
-import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import { Image } from 'react-native';
 import {
   ClampToEdgeWrapping,
   LinearFilter,
-  LinearMipmapLinearFilter,
-  LinearMipmapNearestFilter,
   MirroredRepeatWrapping,
-  NearestFilter,
-  NearestMipmapLinearFilter,
-  NearestMipmapNearestFilter,
   NoColorSpace,
   RepeatWrapping,
   SRGBColorSpace,
@@ -43,8 +37,6 @@ interface TextureDef {
 }
 
 interface SamplerDef {
-  magFilter?: number;
-  minFilter?: number;
   wrapS?: number;
   wrapT?: number;
 }
@@ -66,12 +58,9 @@ interface TextureInfoDef {
 
 interface MaterialDef {
   pbrMetallicRoughness?: {
+    baseColorFactor?: [number, number, number, number];
     baseColorTexture?: TextureInfoDef;
-    metallicRoughnessTexture?: TextureInfoDef;
   };
-  normalTexture?: TextureInfoDef;
-  occlusionTexture?: TextureInfoDef;
-  emissiveTexture?: TextureInfoDef;
 }
 
 interface GlbJson {
@@ -88,7 +77,8 @@ interface ParsedGlb {
 }
 
 interface NativeTextureImage {
-  data: Asset;
+  /** expo-gl texImage2D accepts a file-backed object with localUri. */
+  data: { localUri: string };
   width: number;
   height: number;
 }
@@ -98,14 +88,16 @@ const JSON_CHUNK = 0x4e4f534a;
 const BIN_CHUNK = 0x004e4942;
 
 /**
- * Three's browser GLTFLoader can create geometry/materials under Expo, but its
- * embedded-image path expects browser image APIs. Meshy GLBs therefore arrive
- * with the correct UVs/materials but a missing base-colour map (clay grey).
+ * Restore only the baked colour texture on native Expo GL.
  *
- * This extracts the images already embedded in the GLB, writes them to Expo's
- * cache and uploads them using the same native Asset/DataTexture shape used by
- * expo-three's TextureLoader. No texture is downloaded or duplicated in the
- * app bundle.
+ * GLTFLoader can build the geometry/material graph under React Native, but its
+ * browser image path cannot upload embedded GLB images to expo-gl. Expo GL's
+ * native texImage2D bridge expects `{ localUri }`, so embedded images are
+ * extracted once to cache and fed to Three as DataTextures.
+ *
+ * We intentionally skip normal/metallic/roughness/AO maps for traffic. These
+ * Meshy cars are fairly detailed already and one colour map gives almost all
+ * of the visual identity for a fraction of the mobile fragment-shader cost.
  */
 export async function restoreEmbeddedGlbTextures(
   buffer: ArrayBuffer,
@@ -124,53 +116,31 @@ export async function restoreEmbeddedGlbTextures(
     const definition = materials[materialIndex];
     const material = (await parser.getDependency('material', materialIndex)) as MeshStandardMaterial;
     const pbr = definition.pbrMetallicRoughness;
+    const factor = pbr?.baseColorFactor;
+
+    if (factor) {
+      material.color.setRGB(factor[0], factor[1], factor[2]);
+      material.opacity = factor[3];
+      if (factor[3] < 1) material.transparent = true;
+    }
 
     if (pbr?.baseColorTexture) {
       material.map = await makeTexture(parsed, pbr.baseColorTexture, imageCache, cacheKey, true);
     }
 
-    if (pbr?.metallicRoughnessTexture) {
-      const packed = await makeTexture(
-        parsed,
-        pbr.metallicRoughnessTexture,
-        imageCache,
-        cacheKey,
-        false,
-      );
-      material.metalnessMap = packed;
-      material.roughnessMap = packed;
-    }
+    // If a native texture cannot be restored, at least keep the authored model
+    // visually identifiable rather than rendering every car as clay grey.
+    if (!material.map) material.color.setHex(fallbackColor(cacheKey));
 
-    if (definition.normalTexture) {
-      material.normalMap = await makeTexture(
-        parsed,
-        definition.normalTexture,
-        imageCache,
-        cacheKey,
-        false,
-      );
-    }
-
-    if (definition.occlusionTexture) {
-      material.aoMap = await makeTexture(
-        parsed,
-        definition.occlusionTexture,
-        imageCache,
-        cacheKey,
-        false,
-      );
-    }
-
-    if (definition.emissiveTexture) {
-      material.emissiveMap = await makeTexture(
-        parsed,
-        definition.emissiveTexture,
-        imageCache,
-        cacheKey,
-        true,
-      );
-    }
-
+    // Mobile traffic optimisation: keep a single baked albedo sample and use
+    // cheap scalar PBR values. Geometry is unchanged and textures stay crisp.
+    material.normalMap = null;
+    material.aoMap = null;
+    material.metalnessMap = null;
+    material.roughnessMap = null;
+    material.emissiveMap = null;
+    material.metalness = 0.05;
+    material.roughness = 0.78;
     material.needsUpdate = true;
   }
 }
@@ -198,16 +168,19 @@ async function makeTexture(
   if (!image) return null;
 
   const texture = new Texture();
-  // Expo GL accepts an Expo Asset directly in texImage2D. Marking this as a
-  // DataTexture makes Three pass the image payload through verbatim instead of
-  // trying to route it through a DOM HTMLImageElement.
+  // Forces Three's WebGLTextures path to pass `image.data` directly to
+  // gl.texImage2D. `image.data` is exactly `{ localUri }`, the shape expo-gl
+  // documents for native image uploads.
   (texture as Texture & { isDataTexture: boolean }).isDataTexture = true;
   texture.image = image;
   texture.flipY = false;
   texture.colorSpace = srgb ? SRGBColorSpace : NoColorSpace;
   texture.channel = info.extensions?.KHR_texture_transform?.texCoord ?? info.texCoord ?? 0;
+  texture.generateMipmaps = false;
+  texture.magFilter = LinearFilter;
+  texture.minFilter = LinearFilter;
 
-  applySampler(texture, parsed.json.samplers?.[textureDef.sampler ?? -1]);
+  applyWrapping(texture, parsed.json.samplers?.[textureDef.sampler ?? -1]);
   applyTransform(texture, info.extensions?.KHR_texture_transform);
   texture.needsUpdate = true;
   return texture;
@@ -240,11 +213,7 @@ async function loadNativeImage(
   file.write(parsed.binary.slice(start, end));
 
   const { width, height } = await imageSize(file.uri);
-  const asset = Asset.fromURI(file.uri);
-  asset.width = width;
-  asset.height = height;
-
-  return { data: asset, width, height };
+  return { data: { localUri: file.uri }, width, height };
 }
 
 function imageSize(uri: string): Promise<{ width: number; height: number }> {
@@ -303,13 +272,9 @@ function applyTransform(texture: Texture, transform?: TextureTransformDef): void
   if (transform.rotation !== undefined) texture.rotation = transform.rotation;
 }
 
-function applySampler(texture: Texture, sampler?: SamplerDef): void {
-  // glTF's default wrapping is REPEAT, while Three.Texture defaults to clamp.
+function applyWrapping(texture: Texture, sampler?: SamplerDef): void {
   texture.wrapS = sampler?.wrapS ? wrapping(sampler.wrapS) : RepeatWrapping;
   texture.wrapT = sampler?.wrapT ? wrapping(sampler.wrapT) : RepeatWrapping;
-
-  if (sampler?.magFilter) texture.magFilter = magnificationFilter(sampler.magFilter);
-  if (sampler?.minFilter) texture.minFilter = minificationFilter(sampler.minFilter);
 }
 
 function wrapping(value: number): Wrapping {
@@ -324,24 +289,14 @@ function wrapping(value: number): Wrapping {
   }
 }
 
-function magnificationFilter(value: number): Texture['magFilter'] {
-  return value === 9728 ? NearestFilter : LinearFilter;
-}
-
-function minificationFilter(value: number): Texture['minFilter'] {
-  switch (value) {
-    case 9728:
-      return NearestFilter;
-    case 9729:
-      return LinearFilter;
-    case 9984:
-      return NearestMipmapNearestFilter;
-    case 9985:
-      return LinearMipmapNearestFilter;
-    case 9986:
-      return NearestMipmapLinearFilter;
-    case 9987:
+function fallbackColor(cacheKey: string): number {
+  switch (cacheKey) {
+    case 'redBubble':
+      return 0xe53935;
+    case 'blueBubble':
+      return 0x2f7fe8;
+    case 'azureVelocity':
     default:
-      return LinearMipmapLinearFilter;
+      return 0x31a7ff;
   }
 }
