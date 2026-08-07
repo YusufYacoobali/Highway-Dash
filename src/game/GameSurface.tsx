@@ -52,7 +52,9 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   const frameRef = useRef<number | null>(null);
   const widthRef = useRef(1);
   const pausedRef = useRef(paused);
+  const modeRef = useRef(mode);
   pausedRef.current = paused;
+  modeRef.current = mode;
 
   // Callbacks are read through a ref so the GL context is never re-created
   // when a parent re-renders with new closures.
@@ -68,6 +70,13 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     engineRef.current?.dispose();
     rendererRef.current?.dispose();
+
+    console.log('[HighwayDash][GL] context created', {
+      width: gl.drawingBufferWidth,
+      height: gl.drawingBufferHeight,
+      version: gl.getParameter(gl.VERSION),
+      renderer: gl.getParameter(gl.RENDERER),
+    });
 
     const renderer = createRenderer(gl);
     rendererRef.current = renderer;
@@ -85,6 +94,8 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     engine.events.on('crashed', (result) => callbacks.current.onCrash(result));
 
     let last = Date.now();
+    let lastDiagnostic = last;
+    let renderedFrames = 0;
     let reportedFailure = false;
 
     const loop = () => {
@@ -100,6 +111,22 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
         engine.update(dt);
         renderer.renderer.render(engine.scene, engine.camera);
         renderer.present();
+        renderedFrames += 1;
+
+        // Keep diagnostics sparse enough to leave frame timing alone. If these
+        // continue while the picture is frozen, JS + three are still rendering
+        // and the failure is specifically in Expo GL presentation/native GL.
+        if (now - lastDiagnostic >= 2000) {
+          const glError = gl.getError();
+          console.log('[HighwayDash][GL] frames alive', {
+            mode: modeRef.current,
+            frames: renderedFrames,
+            glError,
+            drawCalls: renderer.renderer.info.render.calls,
+            triangles: renderer.renderer.info.render.triangles,
+          });
+          lastDiagnostic = now;
+        }
       } catch (error) {
         // A throw here used to leave the last frame on screen while the
         // simulation kept running — a silent freeze. Surface it once and keep
@@ -112,9 +139,11 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     };
     loop();
 
-    // Upgrading to the glTF pack happens after the first frames are already on
-    // screen, so start-up never blocks on decoding models.
-    void engine.loadHighDetailModels();
+    // DIAGNOSTIC TEST: keep the guaranteed procedural cars for the whole run.
+    // If the freeze disappears, the GLB decode/material hot-swap path is the
+    // trigger. Restore this call once the renderer issue is isolated.
+    console.log('[HighwayDash][GL] GLB upgrade DISABLED for freeze test');
+    // void engine.loadHighDetailModels();
   }, []);
 
   useEffect(
@@ -137,10 +166,11 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   }, [car]);
 
   useEffect(() => {
+    console.log('[HighwayDash][GL] mode change', { mode, runToken, paused });
     engineRef.current?.setMode(mode);
     // `runToken` is intentionally a dependency: replaying from the crash screen
     // keeps the same mode but must restart the simulation.
-  }, [mode, runToken]);
+  }, [mode, runToken, paused]);
 
   useEffect(() => {
     if (!handleRef) return;
