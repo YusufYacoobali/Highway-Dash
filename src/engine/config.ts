@@ -18,7 +18,6 @@ export const CAMERA = {
   far: 400,
   height: 6.9,
   distance: 14.6,
-  /** More aggressive chase movement sells speed without changing controls. */
   followFactor: 0.62,
   followRate: 11,
   nitroFovBoost: 16,
@@ -28,17 +27,11 @@ export const CAMERA = {
 export const TRAFFIC = {
   minSpeed: 10,
   maxSpeed: 18,
-  /** Longitudinal half-length of the player's collision box. */
   playerHalfLength: 2.5,
-  /** Fair hitboxes are slightly inset from the visible body. */
   collisionWidthScale: 0.84,
   truckCollisionWidthScale: 0.76,
   laneJitter: 0.18,
   truckLaneJitter: 0.04,
-  /**
-   * Hyper-casual pace: readable for only the opening seconds, then traffic
-   * density climbs hard so the screen constantly asks for another move.
-   */
   baseInterval: 1.35,
   minInterval: 0.28,
   difficultyRampSeconds: 50,
@@ -50,7 +43,6 @@ export const TRAFFIC = {
   tripleSpawnMaxChance: 0.15,
   runPrefillCount: 5,
   attractPrefillCount: 8,
-  /** Nitro impact launch tuning. */
   ramSideSpeedMin: 10,
   ramSideSpeedMax: 16,
   ramLiftMin: 8,
@@ -85,7 +77,6 @@ export const SCORING = {
 } as const;
 
 export const NITRO = {
-  /** Faster re-arm keeps the high-energy loop moving. */
   cooldownSeconds: 3.5,
 } as const;
 
@@ -97,14 +88,14 @@ export const CRASH = {
   liftMax: 10,
 } as const;
 
-/**
- * Vehicle target lengths are intentionally 80% of the old values. glTF cars
- * are normalised against these values, so every authored model shrinks evenly.
- */
+/** Uniform visual + collision scale for every player and traffic vehicle. */
+export const VEHICLE_SCALE = 0.8;
+
+/** Authored target lengths before the global vehicle scale is applied. */
 export const VEHICLE_LENGTH = {
-  sports: 4.32,
-  sedan: 4.32,
-  hatch: 4,
-  suv: 4.64,
-  truck: 6.72,
+  sports: 5.4,
+  sedan: 5.4,
+  hatch: 5,
+  suv: 5.8,
+  truck: 8.4,
 } as const;
