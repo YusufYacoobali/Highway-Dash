@@ -7,18 +7,22 @@ const BODY_FOLLOW_RATE = 12;
 const ATTRACT_SWAY_AMPLITUDE = 2.4;
 const ATTRACT_SWAY_RATE = 0.42;
 
-/**
- * Moves the hero car. Steering is one continuous axis rather than lane
- * snapping — that is the core feel decision behind the whole game, so it lives
- * alone in its own system.
- */
+/** Moves the hero car. Steering is one continuous axis rather than lane snapping. */
 export class PlayerSystem implements GameSystem {
   readonly name = 'player';
 
   update({ state, tuning, player, dt }: SystemContext): void {
+    // CrashSequence owns the full player transform while wrecking. Running the
+    // normal steering system here used to overwrite its spin/roll every frame.
+    if (state.crashed) return;
+
     if (state.mode === 'attract') {
-      // Idle demo weave so the menu backdrop always looks alive.
-      state.x = damp(state.x, Math.sin(state.elapsed * ATTRACT_SWAY_RATE) * ATTRACT_SWAY_AMPLITUDE, 1.6, dt);
+      state.x = damp(
+        state.x,
+        Math.sin(state.elapsed * ATTRACT_SWAY_RATE) * ATTRACT_SWAY_AMPLITUDE,
+        1.6,
+        dt,
+      );
     } else {
       state.x = damp(state.x, state.steerTarget, tuning.steerRate, dt);
     }
