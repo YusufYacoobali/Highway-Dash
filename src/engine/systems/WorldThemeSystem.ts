@@ -98,7 +98,9 @@ export class WorldThemeSystem implements GameSystem {
     if (sun) {
       sun.visible = !['night', 'neon', 'tunnel', 'storm', 'volcano'].includes(theme);
       const sunMaterial = sun.material as MeshBasicMaterial;
-      sunMaterial.color.set(theme === 'desert' ? '#fff0a3' : theme === 'snow' ? '#dff5ff' : '#fff2c2');
+      sunMaterial.color.set(
+        theme === 'desert' ? '#fff0a3' : theme === 'snow' ? '#dff5ff' : '#fff2c2',
+      );
     }
     if (clouds) clouds.visible = theme !== 'tunnel' && theme !== 'volcano';
 
@@ -109,6 +111,7 @@ export class WorldThemeSystem implements GameSystem {
     this.rain.visible = theme === 'storm';
     this.snow.visible = theme === 'snow';
     this.recolorStreetlights(theme);
+    this.recolorScenery(theme);
 
     this.scene.traverse((object) => {
       if (object instanceof HemisphereLight) {
@@ -119,6 +122,24 @@ export class WorldThemeSystem implements GameSystem {
         object.intensity = palette.sunIntensity;
         object.color.set(palette.sunColor);
       }
+    });
+  }
+
+  private recolorScenery(theme: WorldThemeId): void {
+    const scenery = sceneryPalette(theme);
+    this.scene.traverse((object) => {
+      if (!(object instanceof Mesh) || !(object.material instanceof MeshLambertMaterial)) return;
+
+      if (object.name === 'world-tree-trunk') {
+        object.material.color.set(scenery.trunk);
+        return;
+      }
+      if (object.name !== 'world-tree-leaves') return;
+
+      const index = Number(object.userData.paletteIndex ?? 0) % scenery.leaves.length;
+      object.material.color.set(scenery.leaves[index] ?? scenery.leaves[0]);
+      object.material.emissive.set(scenery.emissive);
+      object.material.emissiveIntensity = scenery.emissiveIntensity;
     });
   }
 
@@ -275,6 +296,81 @@ export class WorldThemeSystem implements GameSystem {
     group.children.forEach((child, index) => {
       child.position.z = 14 - index * spacing;
     });
+  }
+}
+
+function sceneryPalette(theme: WorldThemeId): {
+  trunk: string;
+  leaves: readonly string[];
+  emissive: string;
+  emissiveIntensity: number;
+} {
+  switch (theme) {
+    case 'desert':
+      return {
+        trunk: '#426b36',
+        leaves: ['#4f823f', '#659344', '#7b9c4b'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'snow':
+      return {
+        trunk: '#48525a',
+        leaves: ['#e8f6ff', '#bfdbe7', '#d5edf5'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'neon':
+      return {
+        trunk: '#182342',
+        leaves: ['#23cde8', '#9d4dff', '#ff3fae'],
+        emissive: '#29155a',
+        emissiveIntensity: 0.32,
+      };
+    case 'volcano':
+      return {
+        trunk: '#1d1715',
+        leaves: ['#5a2119', '#3b2420', '#7a2b1e'],
+        emissive: '#45130a',
+        emissiveIntensity: 0.24,
+      };
+    case 'storm':
+      return {
+        trunk: '#554535',
+        leaves: ['#315f46', '#396c4e', '#284f3c'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'night':
+      return {
+        trunk: '#3a3440',
+        leaves: ['#214f54', '#285d61', '#1b4348'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'tunnel':
+      return {
+        trunk: '#2f3642',
+        leaves: ['#334457', '#3b4d62', '#2b3c50'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'coast':
+      return {
+        trunk: '#8a5930',
+        leaves: ['#2d9f57', '#39b966', '#248c4d'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'forest':
+    case 'sunset':
+    default:
+      return {
+        trunk: '#8b5a2b',
+        leaves: ['#3f9e33', '#4fbf3f', '#358c2e'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
   }
 }
 
