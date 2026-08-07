@@ -14,13 +14,9 @@ export interface TrafficObserver {
   onRam(): void;
 }
 
-/** Single-model performance mode is preserved while the authored GLB pipeline is stabilized. */
 const TEST_TRAFFIC_SILHOUETTE: VehicleSilhouette = 'hatch';
 
-/**
- * Traffic now serves readable patterns. Density still rises over a long run,
- * but event beats decide when pressure is applied and every wall leaves a gap.
- */
+/** Pattern-driven traffic with multiple fair variants per authored event. */
 export class TrafficSystem implements GameSystem {
   readonly name = 'traffic';
 
@@ -79,30 +75,28 @@ export class TrafficSystem implements GameSystem {
   private spawnStep({ state, dt }: SystemContext): void {
     const maxActive = state.mode === 'run' ? TRAFFIC.maxActiveRun : TRAFFIC.maxActiveAttract;
 
-    if (state.mode === 'run' && state.stars < HEAT.roadblocksAt) {
-      this.highHeatRoadblockReady = true;
-    }
+    if (state.mode === 'run' && state.stars < HEAT.roadblocksAt) this.highHeatRoadblockReady = true;
     if (
       state.mode === 'run' &&
       state.stars >= HEAT.roadblocksAt &&
       this.highHeatRoadblockReady &&
       this.active.length <= maxActive - 3
     ) {
-      this.spawnRoadblock(maxActive);
+      this.spawnRoadblock(maxActive, Math.floor(Math.random() * 4));
       this.highHeatRoadblockReady = false;
     }
 
     if (state.mode === 'run' && state.eventSerial !== this.lastEventSerial) {
       this.lastEventSerial = state.eventSerial;
-      this.setPieceDelay = state.event === 'roadblock' || state.event === 'construction' ? 1.0 : -1;
+      this.setPieceDelay = state.event === 'roadblock' || state.event === 'construction' ? randomRange(0.75, 1.25) : -1;
     }
 
     if (this.setPieceDelay >= 0) {
       this.setPieceDelay -= dt;
       if (this.setPieceDelay <= 0) {
         this.setPieceDelay = -1;
-        if (state.event === 'roadblock') this.spawnRoadblock(maxActive);
-        else if (state.event === 'construction') this.spawnConstructionGate(maxActive);
+        if (state.event === 'roadblock') this.spawnRoadblock(maxActive, state.eventVariant);
+        else if (state.event === 'construction') this.spawnConstructionGate(maxActive, state.eventVariant);
       }
     }
 
@@ -205,13 +199,9 @@ export class TrafficSystem implements GameSystem {
 
     vehicle.userData.rammed = true;
     vehicle.userData.passed = true;
-    vehicle.userData.ramVelocityX =
-      side * randomRange(TRAFFIC.ramSideSpeedMin, TRAFFIC.ramSideSpeedMax);
+    vehicle.userData.ramVelocityX = side * randomRange(TRAFFIC.ramSideSpeedMin, TRAFFIC.ramSideSpeedMax);
     vehicle.userData.ramVelocityY = randomRange(TRAFFIC.ramLiftMin, TRAFFIC.ramLiftMax);
-    vehicle.userData.ramVelocityZ = -randomRange(
-      TRAFFIC.ramForwardSpeedMin,
-      TRAFFIC.ramForwardSpeedMax,
-    );
+    vehicle.userData.ramVelocityZ = -randomRange(TRAFFIC.ramForwardSpeedMin, TRAFFIC.ramForwardSpeedMax);
     vehicle.userData.ramSpin = side * randomRange(7.5, 12.5);
     state.cameraShake = Math.max(state.cameraShake, 2.5);
   }
@@ -259,21 +249,77 @@ export class TrafficSystem implements GameSystem {
     this.spawn(second, -2.5);
   }
 
-  /** Three cars can be dramatic because one entire lane is always explicitly open. */
-  private spawnWallWithGap(): void {
-    const gap = Math.floor(Math.random() * LANE_OFFSETS.length);
+  private spawnWallWithGap(zOffset = 0, forcedGap?: number): void {
+    const gap = forcedGap ?? Math.floor(Math.random() * LANE_OFFSETS.length);
     for (let lane = 0; lane < LANE_OFFSETS.length; lane++) {
-      if (lane !== gap) this.spawn(lane, randomRange(-1.2, 1.2));
+      if (lane !== gap) this.spawn(lane, zOffset + randomRange(-1.2, 1.2));
     }
   }
 
-  private spawnRoadblock(maxActive: number): void {
+  private spawnRoadblock(maxActive: number, variant: number): void {
+    const flavour = variant % 4;
+
+    if (flavour === 1 && this.active.length <= maxActive - 4) {
+      const firstGap = Math.random() < 0.5 ? 0 : 3;
+      this.spawn(firstGap === 0 ? 2 : 1, 0);
+      this.spawn(firstGap === 0 ? 3 : 0, -1.5);
+      this.spawn(firstGap === 0 ? 0 : 3, -13);
+      this.spawn(firstGap === 0 ? 1 : 2, -15);
+      this.spawnTimer = Math.max(this.spawnTimer, 1.6);
+      return;
+    }
+
+    if (flavour === 2 && this.active.length <= maxActive - 3) {
+      const gap = Math.floor(Math.random() * LANE_OFFSETS.length);
+      let z = 0;
+      for (let lane = 0; lane < LANE_OFFSETS.length; lane++) {
+        if (lane === gap) continue;
+        this.spawn(lane, z);
+        z -= 5.5;
+      }
+      this.spawnTimer = Math.max(this.spawnTimer, 1.5);
+      return;
+    }
+
+    if (flavour === 3 && this.active.length <= maxActive - 3) {
+      const gap = Math.random() < 0.5 ? 1 : 2;
+      this.spawnWallWithGap(0, gap);
+      this.spawnTimer = Math.max(this.spawnTimer, 1.45);
+      return;
+    }
+
     if (this.active.length > maxActive - 3) return;
     this.spawnWallWithGap();
     this.spawnTimer = Math.max(this.spawnTimer, 1.3);
   }
 
-  private spawnConstructionGate(maxActive: number): void {
+  private spawnConstructionGate(maxActive: number, variant: number): void {
+    const flavour = variant % 4;
+
+    if (flavour === 1 && this.active.length <= maxActive - 3) {
+      const mirror = Math.random() < 0.5;
+      this.spawn(mirror ? 0 : 3, 0);
+      this.spawn(mirror ? 2 : 1, -8);
+      this.spawn(mirror ? 1 : 2, -17);
+      this.spawnTimer = Math.max(this.spawnTimer, 1.6);
+      return;
+    }
+
+    if (flavour === 2 && this.active.length <= maxActive - 3) {
+      const gap = Math.random() < 0.5 ? 1 : 2;
+      this.spawnWallWithGap(-2, gap);
+      this.spawnTimer = Math.max(this.spawnTimer, 1.5);
+      return;
+    }
+
+    if (flavour === 3 && this.active.length <= maxActive - 2) {
+      const leftOpen = Math.random() < 0.5;
+      this.spawn(leftOpen ? 2 : 0, 0);
+      this.spawn(leftOpen ? 3 : 1, -7);
+      this.spawnTimer = Math.max(this.spawnTimer, 1.55);
+      return;
+    }
+
     if (this.active.length > maxActive - 2) return;
     const blockRight = Math.random() < 0.5;
     this.spawn(blockRight ? 2 : 0, 0);
@@ -302,7 +348,6 @@ export class TrafficSystem implements GameSystem {
     for (let i = 0; i < count; i++) {
       const vehicle = this.spawn(i % LANE_OFFSETS.length);
       vehicle.position.z = start - i * gap - randomRange(0, isRun ? 8 : 5);
-
       if (isRun && i < 2) vehicle.position.x = i === 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
     }
   }
