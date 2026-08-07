@@ -1,4 +1,4 @@
-﻿import { CylinderGeometry, Mesh, MeshLambertMaterial, Scene } from 'three';
+import { CylinderGeometry, Mesh, MeshLambertMaterial, Scene } from 'three';
 
 import { ObjectPool } from '@/core/ObjectPool';
 import { pickRandom, randomRange } from '@/core/math';
@@ -6,19 +6,15 @@ import { DESPAWN_Z, LANE_OFFSETS, PICKUPS, SPAWN_Z } from '@/engine/config';
 import type { GameSystem, SystemContext } from '@/engine/types';
 
 const COIN_SPIN_RATE = 5;
-/** Longitudinal window in which a coin can be collected. */
 const COLLECT_BEHIND = -2;
 const COLLECT_AHEAD = 2.4;
+const COLLECT_ANIMATION_SECONDS = 0.24;
 
 export interface PickupObserver {
   onCoinCollected(value: number): void;
 }
 
-/**
- * Lays out the coin runs — the visual "line to follow" that makes weaving feel
- * intentional rather than random — and vacuums them up within the magnet
- * radius supplied by the player's upgrades.
- */
+/** Lays out and animates collectible coin runs. */
 export class PickupSystem implements GameSystem {
   readonly name = 'pickups';
 
@@ -37,11 +33,14 @@ export class PickupSystem implements GameSystem {
       () => {
         const coin = new Mesh(geometry, material);
         coin.rotation.x = Math.PI / 2;
+        coin.userData.collecting = -1;
         this.scene.add(coin);
         return coin;
       },
       (coin) => {
         coin.visible = true;
+        coin.scale.setScalar(1);
+        coin.userData.collecting = -1;
       },
       (coin) => {
         coin.visible = false;
@@ -64,7 +63,6 @@ export class PickupSystem implements GameSystem {
     while (this.active.length > 0) this.recycleAt(this.active.length - 1);
     this.spawnTimer = PICKUPS.spawnInterval;
 
-    // Seed a few runs ahead so the road never starts bare.
     for (let i = 0; i < 3; i++) {
       const run = this.spawnRun();
       for (const coin of run) coin.position.z -= i * 34;
@@ -74,6 +72,28 @@ export class PickupSystem implements GameSystem {
   private collectStep({ state, tuning, player, dt, scroll }: SystemContext): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const coin = this.active[i];
+      const collectingAge = Number(coin.userData.collecting ?? -1);
+
+      if (collectingAge >= 0) {
+        const age = collectingAge + dt;
+        const t = Math.min(1, age / COLLECT_ANIMATION_SECONDS);
+        coin.userData.collecting = age;
+
+        // Snap toward the player, pop upward, spin faster, then shrink away.
+        const chase = Math.min(1, dt * 18);
+        coin.position.x += (player.position.x - coin.position.x) * chase;
+        coin.position.z += (player.position.z - coin.position.z) * chase;
+        coin.position.y += dt * (5 + t * 8);
+        coin.rotation.z += dt * COIN_SPIN_RATE * 3.2;
+
+        const pop = 1 + Math.sin(t * Math.PI) * 0.7;
+        const scale = Math.max(0.001, pop * (1 - t));
+        coin.scale.setScalar(scale);
+
+        if (t >= 1) this.recycleAt(i);
+        continue;
+      }
+
       coin.position.z += scroll;
       coin.rotation.z += dt * COIN_SPIN_RATE;
 
@@ -87,7 +107,7 @@ export class PickupSystem implements GameSystem {
 
       if (collectable) {
         this.observer.onCoinCollected(PICKUPS.value);
-        this.recycleAt(i);
+        coin.userData.collecting = 0;
         continue;
       }
 
