@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { VehicleSilhouette } from '@/domain/cars';
 import type { VehicleBodyProvider, VehicleBodySpec } from '@/engine/types';
+import { loadNativeTexture } from './loadNativeTexture';
 import { readAssetArrayBuffer } from './readAssetArrayBuffer';
 import {
   ACTIVE_MODEL_POOL,
@@ -23,7 +24,7 @@ interface PreparedModel {
   paintMaterialName: string | null;
 }
 
-/** Loads every optimized model in ACTIVE_MODEL_POOL so they can coexist in one run. */
+/** Loads every active GLB once; runtime clones share its geometry/materials/maps. */
 export class GltfBodyProvider implements VehicleBodyProvider {
   readonly id = 'gltf';
   readonly ownsGpuResources = false;
@@ -43,9 +44,11 @@ export class GltfBodyProvider implements VehicleBodyProvider {
           const buffer = await readAssetArrayBuffer(asset);
           const gltf = await loader.parseAsync(buffer, '');
 
-          // Game GLBs are preprocessed offline: their original base-colour
-          // textures are baked into COLOR_0 and all image maps are stripped.
-          // This keeps Expo GL out of the browser-image texture path entirely.
+          // For the compressed test car the offline step changes packaging only:
+          // geometry, normals, UVs and authored material scalar values are kept
+          // intact. Reattach the GLB's exact extracted image pixels here.
+          await attachAuthoredTextures(gltf.scene, spec);
+
           models.set(modelId, prepareModel(gltf.scene, spec));
         } catch (error) {
           console.warn(`[HighwayDash] Failed to load vehicle model: ${modelId}`, error);
@@ -78,9 +81,37 @@ export class GltfBodyProvider implements VehicleBodyProvider {
   }
 }
 
+async function attachAuthoredTextures(root: Object3D, spec: VehicleModelSpec): Promise<void> {
+  if (!spec.textures) return;
+
+  const [baseColor, metalRough] = await Promise.all([
+    spec.textures.baseColor ? loadNativeTexture(spec.textures.baseColor, 'srgb') : Promise.resolve(null),
+    spec.textures.metalRough ? loadNativeTexture(spec.textures.metalRough, 'linear') : Promise.resolve(null),
+  ]);
+
+  root.traverse((node) => {
+    const mesh = node as Mesh;
+    if (!mesh.isMesh) return;
+
+    for (const material of toMaterialArray(mesh.material)) {
+      const standard = material as MeshStandardMaterial;
+      if (!standard.isMeshStandardMaterial) continue;
+
+      if (baseColor) standard.map = baseColor;
+      if (metalRough) {
+        // glTF stores roughness in G and metallic in B; Three's standard
+        // material reads those exact channels when the same map is assigned.
+        standard.roughnessMap = metalRough;
+        standard.metalnessMap = metalRough;
+      }
+      standard.needsUpdate = true;
+    }
+  });
+}
+
 /**
- * Normalises arbitrary GLBs into engine space. Meshy exports these cars with
- * the long axis on X, so forwardAxis controls the final road orientation.
+ * Only spatial normalization remains: centre/ground/scale the untouched model
+ * and rotate its authored forward axis onto the road. No mesh or UV edits.
  */
 function prepareModel(root: Object3D, spec: VehicleModelSpec): PreparedModel {
   const bounds = new Box3().setFromObject(root);
