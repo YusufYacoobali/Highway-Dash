@@ -98,7 +98,6 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
 
       try {
         engine.update(dt);
-        renderer.beginFrame();
         renderer.renderer.render(engine.scene, engine.camera);
         renderer.present();
       } catch (error) {
@@ -178,7 +177,11 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
       onLayout={handleLayout}
       {...(mode === 'run' ? panResponder.panHandlers : {})}
     >
-      <GLView style={StyleSheet.absoluteFill} onContextCreate={handleContextCreate} />
+      <GLView
+        style={StyleSheet.absoluteFill}
+        msaaSamples={0}
+        onContextCreate={handleContextCreate}
+      />
     </View>
   );
 };
