@@ -62,7 +62,7 @@ export class RunDirectorSystem implements GameSystem {
 
     const firstBeat = this.openingBeats[0] ?? { event: 'cruise' as const, seconds: 12 };
     state.event = firstBeat.event;
-    state.eventVariant = Math.floor(Math.random() * 4);
+    state.eventVariant = rollEventVariant(firstBeat.event);
     state.eventRemaining = state.mode === 'run' ? firstBeat.seconds : 9999;
     state.eventSerial = 0;
     state.theme = 'sunset';
@@ -98,7 +98,7 @@ export class RunDirectorSystem implements GameSystem {
 
   private start(state: SystemContext['state'], event: RunEventId, seconds: number): void {
     state.event = event;
-    state.eventVariant = Math.floor(Math.random() * 4);
+    state.eventVariant = rollEventVariant(event);
     state.eventRemaining = seconds;
     state.eventSerial += 1;
     if (event !== 'cruise') this.lastSpectacle = event;
@@ -156,6 +156,13 @@ function buildThemeWindows(): ThemeWindow[] {
   }
 
   return windows;
+}
+
+function rollEventVariant(event: RunEventId): number {
+  if (event === 'cruise') return 0;
+  // Variant 3 is the deliberately rare, extra-chaotic version (~9%).
+  if (Math.random() < 0.09) return 3;
+  return Math.floor(Math.random() * 3);
 }
 
 function durationForEvent(event: RunEventId, late: boolean): number {
