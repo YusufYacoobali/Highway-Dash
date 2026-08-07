@@ -78,10 +78,6 @@ export interface SystemContext {
   scroll: number;
 }
 
-/**
- * Interface Segregation in practice: a system only implements the hooks it
- * needs, and the engine never assumes more than `update`.
- */
 export interface GameSystem {
   readonly name: string;
   update(ctx: SystemContext): void;
@@ -101,6 +97,8 @@ export interface VehicleMeta {
   width: number;
   silhouette: VehicleSilhouette;
   livery: Livery;
+  /** Active authored test GLB id, when the glTF provider is being used. */
+  modelId?: string;
   /** Traffic only: how fast this car is cruising, world units/second. */
   speed: number;
   /** Traffic only: whether the near-miss check has already run for this car. */
@@ -118,26 +116,18 @@ export type VehicleObject = Group & { userData: VehicleMeta };
 export interface VehicleBodySpec {
   silhouette: VehicleSilhouette;
   livery: Livery;
+  /** Optional authored GLB id used by the test model pool. */
+  modelId?: string;
   /**
-   * True for the player's car, whose paint must match the garage selection.
-   * Traffic leaves this false so the authored glTF colours survive.
+   * True for the player's car, whose paint may match the garage selection.
+   * Test mode currently preserves authored colours instead.
    */
   recolor: boolean;
 }
 
-/**
- * Supplies the visual body for a silhouette. Two implementations exist — a
- * procedural box car that is always available, and one backed by the glTF
- * pack — which lets the engine start rendering before the models finish loading.
- */
 export interface VehicleBodyProvider {
   readonly id: string;
-  /**
-   * True when each built body owns its geometry and materials outright and can
-   * be disposed on removal. glTF bodies are clones that share buffers with a
-   * prototype, so disposing one would corrupt every other vehicle.
-   */
   readonly ownsGpuResources: boolean;
   build(spec: VehicleBodySpec): Group;
-  dimensions(silhouette: VehicleSilhouette): { length: number; width: number };
+  dimensions(silhouette: VehicleSilhouette, modelId?: string): { length: number; width: number };
 }
