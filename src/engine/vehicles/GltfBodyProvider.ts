@@ -5,7 +5,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { VehicleSilhouette } from '@/domain/cars';
 import type { VehicleBodyProvider, VehicleBodySpec } from '@/engine/types';
 import { readAssetArrayBuffer } from './readAssetArrayBuffer';
-import { restoreEmbeddedGlbTextures } from './restoreGlbTextures';
 import {
   ACTIVE_MODEL_POOL,
   MODEL_LIBRARY,
@@ -24,7 +23,7 @@ interface PreparedModel {
   paintMaterialName: string | null;
 }
 
-/** Loads every model in ACTIVE_MODEL_POOL so they can coexist in one run. */
+/** Loads every optimized model in ACTIVE_MODEL_POOL so they can coexist in one run. */
 export class GltfBodyProvider implements VehicleBodyProvider {
   readonly id = 'gltf';
   readonly ownsGpuResources = false;
@@ -44,11 +43,9 @@ export class GltfBodyProvider implements VehicleBodyProvider {
           const buffer = await readAssetArrayBuffer(asset);
           const gltf = await loader.parseAsync(buffer, '');
 
-          // GLTFLoader's geometry path works in React Native, but embedded GLB
-          // images normally go through browser image APIs. Re-upload the baked
-          // Meshy texture maps through Expo Asset so they survive on expo-gl.
-          await restoreEmbeddedGlbTextures(buffer, gltf.parser, modelId);
-
+          // Game GLBs are preprocessed offline: their original base-colour
+          // textures are baked into COLOR_0 and all image maps are stripped.
+          // This keeps Expo GL out of the browser-image texture path entirely.
           models.set(modelId, prepareModel(gltf.scene, spec));
         } catch (error) {
           console.warn(`[HighwayDash] Failed to load vehicle model: ${modelId}`, error);
@@ -82,9 +79,8 @@ export class GltfBodyProvider implements VehicleBodyProvider {
 }
 
 /**
- * Normalises arbitrary GLBs into engine space. Meshy currently exports these
- * cars with the long axis on X; using a configurable forward axis prevents us
- * from accidentally treating their width as their length again.
+ * Normalises arbitrary GLBs into engine space. Meshy exports these cars with
+ * the long axis on X, so forwardAxis controls the final road orientation.
  */
 function prepareModel(root: Object3D, spec: VehicleModelSpec): PreparedModel {
   const bounds = new Box3().setFromObject(root);
