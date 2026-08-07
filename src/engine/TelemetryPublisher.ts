@@ -29,6 +29,7 @@ export class TelemetryPublisher {
       nitroActive: state.nitroRemaining > 0,
       nitroReady: state.nitroRemaining <= 0 && state.nitroCooldown <= 0,
       event: state.event,
+      eventVariant: state.eventVariant,
       eventRemaining: Math.max(0, Math.ceil(state.eventRemaining)),
       theme: state.theme,
       intensity: Math.round(state.intensity * 100) / 100,
@@ -56,6 +57,7 @@ function isSame(a: Telemetry, b: Telemetry): boolean {
     a.nitroActive === b.nitroActive &&
     a.nitroReady === b.nitroReady &&
     a.event === b.event &&
+    a.eventVariant === b.eventVariant &&
     a.eventRemaining === b.eventRemaining &&
     a.theme === b.theme &&
     a.intensity === b.intensity
