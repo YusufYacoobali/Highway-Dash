@@ -10,11 +10,11 @@ import {
 
 import { pickRandom } from '@/core/math';
 import type { VehicleSilhouette } from '@/domain/cars';
+import { VEHICLE_SCALE } from '@/engine/config';
 import type { Livery, VehicleBodyProvider, VehicleBodySpec, VehicleObject } from '@/engine/types';
 import { GltfBodyProvider } from './GltfBodyProvider';
 import { ProceduralBodyProvider } from './ProceduralBodyProvider';
 
-/** Traffic paint used by the procedural bodies, matched to the mockup. */
 const TRAFFIC_COLORS = [
   '#3B7BE0',
   '#F2B705',
@@ -31,10 +31,6 @@ export function randomTrafficLivery(): Livery {
   return { body, roof: darken(body, 0.82) };
 }
 
-/**
- * Weighted traffic mix. Trucks used to be 20% of every spawn which made the
- * road feel like a delivery-van simulator and amplified their wide footprint.
- */
 export function randomTrafficSilhouette(): VehicleSilhouette {
   const roll = Math.random();
   if (roll < 0.08) return 'truck';
@@ -49,12 +45,6 @@ export function darken(hex: string, factor: number): string {
 
 const BLOB_SHADOW_NAME = 'blob-shadow';
 
-/**
- * One flat, unlit ellipse per vehicle, standing in for real shadow mapping.
- * Every vehicle shares this geometry and material, and the whole effect costs
- * a single extra draw call per car rather than an entire depth pass over every
- * object in the scene — which is what makes the game viable on the expo-gl bridge.
- */
 const blobShadowGeometry = new CircleGeometry(1, 10);
 const blobShadowMaterial = new MeshBasicMaterial({
   color: 0x000000,
@@ -85,7 +75,9 @@ export class VehicleWorkshop {
 
   create(spec: VehicleBodySpec): VehicleObject {
     const vehicle = new Group() as VehicleObject;
-    const { length, width } = this.provider.dimensions(spec.silhouette);
+    const raw = this.provider.dimensions(spec.silhouette);
+    const length = raw.length * VEHICLE_SCALE;
+    const width = raw.width * VEHICLE_SCALE;
 
     vehicle.userData = {
       length,
@@ -103,19 +95,15 @@ export class VehicleWorkshop {
 
   /** Re-paints/rebuilds an existing vehicle in place. */
   reskin(vehicle: VehicleObject, silhouette: VehicleSilhouette, livery: Livery, recolor: boolean): void {
-    const { length, width } = this.provider.dimensions(silhouette);
+    const raw = this.provider.dimensions(silhouette);
     vehicle.userData.silhouette = silhouette;
     vehicle.userData.livery = livery;
-    vehicle.userData.length = length;
-    vehicle.userData.width = width;
+    vehicle.userData.length = raw.length * VEHICLE_SCALE;
+    vehicle.userData.width = raw.width * VEHICLE_SCALE;
 
     this.replaceBody(vehicle, { silhouette, livery, recolor });
   }
 
-  /**
-   * Decode the glTF pack without touching live scene objects. Applying models
-   * during an active run caused a first-run render/state race on native builds.
-   */
   async prepareModels(): Promise<boolean> {
     if (this.provider.id === 'gltf' || this.preparedProvider) return true;
     const gltf = await GltfBodyProvider.load();
@@ -124,7 +112,6 @@ export class VehicleWorkshop {
     return true;
   }
 
-  /** Apply an already-decoded pack synchronously between gameplay frames. */
   activatePreparedModels(playerVehicle: VehicleObject | null): boolean {
     if (this.provider.id === 'gltf') return true;
     if (!this.preparedProvider) return false;
@@ -139,7 +126,6 @@ export class VehicleWorkshop {
     return true;
   }
 
-  /** Backwards-compatible helper for callers that explicitly want an immediate switch. */
   async upgradeToModels(playerVehicle: VehicleObject | null): Promise<boolean> {
     if (!(await this.prepareModels())) return false;
     return this.activatePreparedModels(playerVehicle);
@@ -149,7 +135,6 @@ export class VehicleWorkshop {
     this.issued.delete(vehicle);
   }
 
-  /** Swaps the body while leaving the vehicle's shared blob shadow in place. */
   private replaceBody(vehicle: VehicleObject, spec: VehicleBodySpec): void {
     for (let i = vehicle.children.length - 1; i >= 0; i--) {
       const child = vehicle.children[i];
@@ -163,15 +148,15 @@ export class VehicleWorkshop {
     vehicle.add(this.buildBody(spec));
   }
 
-  /** Stamps ownership on the body so it can be disposed correctly later. */
+  /** Every authored and procedural body is globally scaled to 80%. */
   private buildBody(spec: VehicleBodySpec): Group {
     const body = this.provider.build(spec);
+    body.scale.multiplyScalar(VEHICLE_SCALE);
     body.userData.ownsGpuResources = this.provider.ownsGpuResources;
     return body;
   }
 }
 
-/** Frees a discarded body's GPU buffers without disposing shared glTF data. */
 function releaseGpuResources(root: Object3D): void {
   const owned = root.userData.ownsGpuResources === true;
 
