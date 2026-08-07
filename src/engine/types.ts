@@ -14,9 +14,22 @@ export type RunEventId =
   | 'tunnel'
   | 'nitroRush'
   | 'police'
-  | 'roadblock';
+  | 'roadblock'
+  | 'laneSqueeze';
 
-export type WorldThemeId = 'sunset' | 'forest' | 'tunnel' | 'night' | 'coast' | 'storm';
+export type WorldThemeId =
+  | 'sunset'
+  | 'forest'
+  | 'tunnel'
+  | 'night'
+  | 'coast'
+  | 'storm'
+  | 'desert'
+  | 'snow'
+  | 'neon'
+  | 'volcano';
+
+export type LaneCount = 3 | 4;
 
 export interface Telemetry {
   kmh: number;
@@ -27,12 +40,17 @@ export interface Telemetry {
   started: boolean;
   nitroActive: boolean;
   nitroReady: boolean;
+  nitroRemaining: number;
+  nitroGraceActive: boolean;
+  nitroGraceRemaining: number;
+  nitroSmashes: number;
   event: RunEventId;
   /** 0–3 flavour chosen fresh whenever an event starts. */
   eventVariant: number;
   eventRemaining: number;
   theme: WorldThemeId;
   intensity: number;
+  laneCount: LaneCount;
 }
 
 export const EMPTY_TELEMETRY: Telemetry = {
@@ -44,11 +62,16 @@ export const EMPTY_TELEMETRY: Telemetry = {
   started: false,
   nitroActive: false,
   nitroReady: true,
+  nitroRemaining: 0,
+  nitroGraceActive: false,
+  nitroGraceRemaining: 0,
+  nitroSmashes: 0,
   event: 'cruise',
   eventVariant: 0,
   eventRemaining: 0,
   theme: 'sunset',
   intensity: 0,
+  laneCount: 4,
 };
 
 export interface EngineEvents {
@@ -57,7 +80,7 @@ export interface EngineEvents {
   coinCollected: { total: number };
   starGained: { stars: number };
   nitroFired: Record<string, never>;
-  trafficRammed: { combo: number };
+  trafficRammed: { combo: number; smashCount: number; grace: boolean };
   eventStarted: { event: RunEventId; theme: WorldThemeId };
   themeChanged: { theme: WorldThemeId };
   crashed: RunResult;
@@ -83,6 +106,8 @@ export interface RunState {
   topSpeedKmh: number;
   nitroRemaining: number;
   nitroCooldown: number;
+  nitroGraceRemaining: number;
+  nitroSmashes: number;
   started: boolean;
   crashed: boolean;
   cameraShake: number;
@@ -96,6 +121,7 @@ export interface RunState {
   intensity: number;
   trafficIntensity: number;
   policePressure: number;
+  laneCount: LaneCount;
 }
 
 export interface SystemContext {

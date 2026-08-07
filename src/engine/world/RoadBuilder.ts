@@ -10,13 +10,7 @@ import {
 import { ROAD_LENGTH, ROAD_WIDTH } from '@/engine/config';
 import type { ScrollBand } from './ScrollBand';
 
-/**
- * Strip counts are deliberately low. Every dash and barrier is its own draw
- * call — they share geometry but three still issues one call each — and the
- * expo-gl bridge charges real time per call, so density is traded for spacing
- * that reads the same at speed.
- */
-const DASH_LANES = [-3, 0, 3];
+const DASH_LANES = [-3, 0, 3] as const;
 const DASH_COUNT = 13;
 const DASH_SPACING = 16;
 const DASH_LENGTH = 5;
@@ -25,8 +19,13 @@ const BARRIER_COUNT = 17;
 const BARRIER_SPACING = 10.8;
 const BARRIER_LENGTH = 9.6;
 
-/** Static asphalt plus the two recycled strips that sell forward motion. */
-export function buildRoad(scene: Scene): ScrollBand[] {
+export interface RoadBuild {
+  bands: ScrollBand[];
+  dashColumns: Mesh[][];
+}
+
+/** Static asphalt plus recycled motion strips and handles for lane-layout changes. */
+export function buildRoad(scene: Scene): RoadBuild {
   const grass = new Mesh(
     new PlaneGeometry(400, ROAD_LENGTH),
     new MeshLambertMaterial({ color: 0x57b94a }),
@@ -54,25 +53,36 @@ export function buildRoad(scene: Scene): ScrollBand[] {
     scene.add(shoulder);
   }
 
-  return [buildDashes(scene), buildBarriers(scene)];
+  const dashes = buildDashes(scene);
+  return {
+    bands: [dashes.band, buildBarriers(scene)],
+    dashColumns: dashes.columns,
+  };
 }
 
-function buildDashes(scene: Scene): ScrollBand {
+function buildDashes(scene: Scene): { band: ScrollBand; columns: Mesh[][] } {
   const geometry = new PlaneGeometry(0.28, DASH_LENGTH);
   const material = new MeshBasicMaterial({ color: 0xf4f3ee });
   const objects: Mesh[] = [];
+  const columns: Mesh[][] = DASH_LANES.map(() => []);
 
-  for (const laneX of DASH_LANES) {
+  DASH_LANES.forEach((laneX, columnIndex) => {
     for (let i = 0; i < DASH_COUNT; i++) {
       const dash = new Mesh(geometry, material);
+      dash.name = 'world-lane-dash';
+      dash.userData.columnIndex = columnIndex;
       dash.rotation.x = -Math.PI / 2;
       dash.position.set(laneX, 0.03, 10 - i * DASH_SPACING);
       scene.add(dash);
       objects.push(dash);
+      columns[columnIndex].push(dash);
     }
-  }
+  });
 
-  return { objects, period: DASH_COUNT * DASH_SPACING, threshold: 14 };
+  return {
+    band: { objects, period: DASH_COUNT * DASH_SPACING, threshold: 14 },
+    columns,
+  };
 }
 
 function buildBarriers(scene: Scene): ScrollBand {

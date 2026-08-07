@@ -9,7 +9,11 @@ import {
   useDistance,
   useHasStarted,
   useNitroActive,
+  useNitroGraceActive,
+  useNitroGraceRemaining,
   useNitroReady,
+  useNitroRemaining,
+  useNitroSmashes,
   useRunCoins,
   useRunEvent,
   useRunEventRemaining,
@@ -38,6 +42,7 @@ export const RunHud: React.FC<RunHudProps> = ({ onQuit, onNitro }) => {
         style={styles.topScrim}
       />
       <IntensityVignette />
+      <NitroVignette />
 
       <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
         <View pointerEvents="none">
@@ -65,6 +70,7 @@ export const RunHud: React.FC<RunHudProps> = ({ onQuit, onNitro }) => {
 
       <EventBanner />
       <ComboBanner />
+      <NitroRampageBanner />
       <PopLayer />
 
       <View
@@ -81,16 +87,21 @@ export const RunHud: React.FC<RunHudProps> = ({ onQuit, onNitro }) => {
 const SpeedReadout: React.FC = () => {
   const kmh = useSpeed();
   const nitro = useNitroActive();
+  const grace = useNitroGraceActive();
   return (
     <View style={styles.speedRow}>
       <AppText
         variant="displayL"
-        color={nitro || kmh > 300 ? palette.cyanIce : palette.white}
+        color={nitro ? palette.cyanIce : grace ? palette.greenSoft : kmh > 300 ? palette.cyanIce : palette.white}
         style={[styles.speedNumber, nitro && styles.speedNitro]}
       >
         {kmh}
       </AppText>
-      <AppText variant="caption" style={styles.speedUnit} color={nitro ? palette.cyanIce : alpha.white55}>
+      <AppText
+        variant="caption"
+        style={styles.speedUnit}
+        color={nitro ? palette.cyanIce : grace ? palette.greenSoft : alpha.white55}
+      >
         KM/H
       </AppText>
     </View>
@@ -179,6 +190,36 @@ const ComboBanner: React.FC = () => {
   );
 };
 
+const NitroRampageBanner: React.FC = () => {
+  const active = useNitroActive();
+  const grace = useNitroGraceActive();
+  const remaining = useNitroRemaining();
+  const graceRemaining = useNitroGraceRemaining();
+  const smashes = useNitroSmashes();
+
+  if (!active && !grace) return null;
+
+  return (
+    <View pointerEvents="none" style={styles.rampageBanner}>
+      <AppText
+        variant="displayM"
+        align="center"
+        color={active ? palette.cyanIce : palette.greenSoft}
+        style={styles.rampageTitle}
+      >
+        {active ? 'RAMPAGE' : 'SAFE'}
+      </AppText>
+      <AppText variant="bodyStrong" align="center" color={palette.white}>
+        {active
+          ? smashes > 0
+            ? `SMASH x${smashes}  ·  ${remaining.toFixed(1)}s`
+            : `GO THROUGH THEM  ·  ${remaining.toFixed(1)}s`
+          : `NO CRASH  ·  ${graceRemaining.toFixed(1)}s`}
+      </AppText>
+    </View>
+  );
+};
+
 const SteerHint: React.FC = () => {
   const started = useHasStarted();
   const opacity = useRef(new Animated.Value(1)).current;
@@ -195,7 +236,7 @@ const SteerHint: React.FC = () => {
     <Animated.View pointerEvents="none" style={[styles.hint, { opacity }]}>
       <AppText variant="bodyStrong" align="center">DRAG TO STEER</AppText>
       <AppText variant="micro" align="center" color={alpha.white55}>
-        NEAR MISS TO BUILD HEAT
+        SECOND FINGER CAN HIT NITRO
       </AppText>
     </Animated.View>
   );
@@ -204,12 +245,20 @@ const SteerHint: React.FC = () => {
 const NitroButton: React.FC<{ onPress(): void }> = ({ onPress }) => {
   const ready = useNitroReady();
   const active = useNitroActive();
+  const grace = useNitroGraceActive();
+  const remaining = useNitroRemaining();
+  const graceRemaining = useNitroGraceRemaining();
   const event = useRunEvent();
   const frenzy = event === 'nitroRush';
 
   return (
     <View style={styles.nitroWrap}>
-      {frenzy ? <AppText variant="micro" color={palette.cyanIce}>FRENZY</AppText> : null}
+      <AppText
+        variant="micro"
+        color={active ? palette.cyanIce : grace ? palette.greenSoft : frenzy ? palette.cyanIce : alpha.white55}
+      >
+        {active ? 'RAMPAGE' : grace ? 'SAFE' : frenzy ? 'FRENZY' : ready ? 'NITRO' : 'CHARGING'}
+      </AppText>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Nitro"
@@ -220,11 +269,18 @@ const NitroButton: React.FC<{ onPress(): void }> = ({ onPress }) => {
           styles.nitro,
           frenzy && styles.nitroFrenzy,
           active && styles.nitroActive,
-          !ready && !active && styles.nitroCooling,
+          grace && styles.nitroGrace,
+          !ready && !active && !grace && styles.nitroCooling,
           pressed && styles.nitroPressed,
         ]}
       >
-        <BoltIcon size={34} />
+        {active || grace ? (
+          <AppText variant="title" color={palette.white}>
+            {(active ? remaining : graceRemaining).toFixed(1)}
+          </AppText>
+        ) : (
+          <BoltIcon size={36} />
+        )}
       </Pressable>
     </View>
   );
@@ -236,6 +292,21 @@ const IntensityVignette: React.FC = () => {
     <View
       pointerEvents="none"
       style={[styles.intensityVignette, { opacity: Math.max(0, intensity - 0.62) * 0.5 }]}
+    />
+  );
+};
+
+const NitroVignette: React.FC = () => {
+  const active = useNitroActive();
+  const grace = useNitroGraceActive();
+  if (!active && !grace) return null;
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.nitroVignette,
+        { borderColor: active ? 'rgba(86,226,255,0.68)' : 'rgba(111,255,198,0.54)' },
+      ]}
     />
   );
 };
@@ -255,6 +326,8 @@ function eventPresentation(event: RunEventId, variant: number): { label: string;
       return { label: ['POLICE CHASE', 'INTERCEPTORS', 'HIGH HEAT', 'SIRENS'][index], color: palette.redHot };
     case 'roadblock':
       return { label: ['ROADBLOCK', 'DOUBLE GATE', 'DIAGONAL WALL', 'GAP TEST'][index], color: palette.redHot };
+    case 'laneSqueeze':
+      return { label: ['3 LANES', 'ROAD NARROWS', 'TIGHT SQUEEZE', 'NO ROOM'][index], color: palette.orange };
     case 'cruise':
     default:
       return { label: 'CLEAR ROAD', color: alpha.white62 };
@@ -268,6 +341,10 @@ const styles = StyleSheet.create({
     borderWidth: 7,
     borderColor: 'rgba(255,45,70,0.45)',
   },
+  nitroVignette: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 12,
+  },
   topRow: {
     position: 'absolute',
     left: 16,
@@ -278,7 +355,7 @@ const styles = StyleSheet.create({
   },
   speedRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   speedNumber: { fontSize: 44, lineHeight: 44 },
-  speedNitro: { transform: [{ skewX: '-3deg' }] },
+  speedNitro: { transform: [{ skewX: '-3deg' }, { scale: 1.04 }] },
   speedUnit: { fontSize: 12, letterSpacing: 1.4 },
   statChips: { flexDirection: 'row', gap: 6, marginTop: 6 },
   pauseButton: {
@@ -306,6 +383,14 @@ const styles = StyleSheet.create({
   },
   eventDot: { width: 6, height: 6, borderRadius: 3 },
   comboBanner: { position: 'absolute', top: 184, left: 0, right: 0 },
+  rampageBanner: {
+    position: 'absolute',
+    top: '39%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  rampageTitle: { fontSize: 38, lineHeight: 42 },
   bottomRow: {
     marginTop: 'auto',
     paddingHorizontal: 18,
@@ -325,23 +410,34 @@ const styles = StyleSheet.create({
   },
   nitroWrap: { alignItems: 'center', gap: 4 },
   nitro: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(31,165,224,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(127,224,255,0.72)',
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(31,165,224,0.94)',
+    borderWidth: 2,
+    borderColor: 'rgba(127,224,255,0.82)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   nitroFrenzy: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     backgroundColor: palette.cyanMid,
     borderColor: palette.cyanIce,
   },
-  nitroActive: { transform: [{ scale: 1.06 }] },
-  nitroCooling: { opacity: 0.34 },
-  nitroPressed: { transform: [{ scale: 0.94 }] },
+  nitroActive: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: palette.cyanDeep,
+    borderColor: palette.white,
+    transform: [{ scale: 1.08 }],
+  },
+  nitroGrace: {
+    backgroundColor: palette.greenDeep,
+    borderColor: palette.greenSoft,
+  },
+  nitroCooling: { opacity: 0.3 },
+  nitroPressed: { transform: [{ scale: 0.92 }] },
 });

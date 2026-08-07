@@ -1,7 +1,7 @@
 import { BoxGeometry, Mesh, MeshBasicMaterial, Scene } from 'three';
 
 import { damp } from '@/core/math';
-import { LANE_OFFSETS } from '@/engine/config';
+import { laneOffsetsFor } from '@/engine/config';
 import type { GameSystem, SystemContext, VehicleObject } from '@/engine/types';
 import { VehicleWorkshop } from '@/engine/vehicles/VehicleWorkshop';
 import { PLAYER_MODEL_ID } from '@/engine/vehicles/vehicleModelConfig';
@@ -14,7 +14,7 @@ interface PoliceRig {
   blue: Mesh;
 }
 
-/** Police chase flavour changes per event without adding expensive new models. */
+/** Police chase flavour changes per event and follows whichever road layout is active. */
 export class PoliceSystem implements GameSystem {
   readonly name = 'police';
 
@@ -49,12 +49,14 @@ export class PoliceSystem implements GameSystem {
 
   update({ state, dt }: SystemContext): void {
     this.flashClock += dt;
-    const chaseActive = state.mode === 'run' && !state.crashed && (state.stars >= 2 || state.event === 'police');
+    const chaseActive =
+      state.mode === 'run' && !state.crashed && (state.stars >= 2 || state.event === 'police');
     const variant = state.event === 'police' ? state.eventVariant % 4 : 0;
     const forcePair = state.event === 'police' && (variant === 1 || variant === 2);
     const desired = !chaseActive ? 0 : state.stars >= 4 || forcePair ? 2 : 1;
     const flashRate = variant === 3 ? 13 : 9;
     const flash = Math.floor(this.flashClock * flashRate) % 2 === 0;
+    const lanes = laneOffsetsFor(state.laneCount);
 
     this.rigs.forEach((rig, index) => {
       const active = index < desired;
@@ -64,12 +66,14 @@ export class PoliceSystem implements GameSystem {
       rig.red.visible = flash !== (index % 2 === 0);
       rig.blue.visible = !rig.red.visible;
 
-      const baseLane = index === 0 ? 1 : 2;
-      const lane = variant === 2 ? (index === 0 ? 0 : 3) : baseLane;
+      const innerLane = Math.max(0, Math.min(lanes.length - 1, index === 0 ? 1 : lanes.length - 2));
+      const outerLane = index === 0 ? 0 : lanes.length - 1;
+      const lane = variant === 2 ? outerLane : innerLane;
       const weaveScale = variant === 1 ? 1.18 : variant === 3 ? 0.92 : 0.72;
       const weaveRate = variant === 1 ? 2.05 : variant === 3 ? 1.35 : 1.6;
-      const weave = Math.sin(state.elapsed * (weaveRate + index * 0.18) + index * 2.2) * weaveScale;
-      const targetX = LANE_OFFSETS[lane] + weave;
+      const weave =
+        Math.sin(state.elapsed * (weaveRate + index * 0.18) + index * 2.2) * weaveScale;
+      const targetX = (lanes[lane] ?? 0) + weave;
       const eventPressure = variant === 1 ? 0.66 : variant === 2 ? 0.56 : variant === 3 ? 0.5 : 0.45;
       const pressure = Math.max(state.policePressure, state.event === 'police' ? eventPressure : 0);
       const closeOffset = variant === 1 ? 3 : variant === 3 ? 1.5 : 0;

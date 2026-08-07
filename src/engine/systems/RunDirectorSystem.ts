@@ -18,8 +18,28 @@ interface ThemeWindow {
 }
 
 const EARLY_EVENTS: readonly RunEventId[] = ['coinRush', 'construction', 'tunnel', 'nitroRush'];
-const LATE_EVENTS: readonly RunEventId[] = ['police', 'roadblock', 'coinRush', 'construction', 'nitroRush', 'tunnel'];
-const WORLD_THEMES: readonly WorldThemeId[] = ['forest', 'night', 'coast', 'storm'];
+const OPENING_LATE_EVENTS: readonly RunEventId[] = [
+  'police',
+  'roadblock',
+  'coinRush',
+  'construction',
+  'nitroRush',
+  'tunnel',
+];
+const ENDLESS_EVENTS: readonly RunEventId[] = [
+  ...OPENING_LATE_EVENTS,
+  'laneSqueeze',
+];
+const WORLD_THEMES: readonly WorldThemeId[] = [
+  'forest',
+  'night',
+  'coast',
+  'storm',
+  'desert',
+  'snow',
+  'neon',
+  'volcano',
+];
 
 /** Fresh event deck, durations, variants and world route are rolled every run. */
 export class RunDirectorSystem implements GameSystem {
@@ -41,17 +61,24 @@ export class RunDirectorSystem implements GameSystem {
       this.observer.onThemeChanged(nextTheme);
     }
 
+    state.laneCount = state.event === 'laneSqueeze' ? 3 : 4;
+
     state.eventRemaining -= dt;
     if (state.eventRemaining <= 0) this.advanceBeat(state);
 
     const baseDifficulty = clamp(state.elapsed / RUN_DIRECTOR.endlessDifficultySeconds, 0, 1);
+    const lateDensity = clamp((state.elapsed - 55) / 120, 0, 1);
     const eventPressure = pressureForEvent(state.event);
-    state.intensity = clamp(baseDifficulty * 0.72 + eventPressure, 0, 1);
-    state.trafficIntensity = clamp(0.48 + baseDifficulty * 0.42 + eventPressure * 0.6, 0.38, 1.08);
+    state.intensity = clamp(baseDifficulty * 0.68 + lateDensity * 0.18 + eventPressure, 0, 1);
+    state.trafficIntensity = clamp(
+      0.5 + baseDifficulty * 0.4 + lateDensity * 0.26 + eventPressure * 0.58,
+      0.4,
+      1.24,
+    );
 
     state.policePressure = clamp((state.stars - 1) / 4, 0, 1);
-    if (state.stars >= 3) state.trafficIntensity = Math.min(1.08, state.trafficIntensity + 0.08);
-    if (state.event === 'nitroRush') state.nitroCooldown = Math.min(state.nitroCooldown, 0.25);
+    if (state.stars >= 3) state.trafficIntensity = Math.min(1.24, state.trafficIntensity + 0.08);
+    if (state.event === 'nitroRush') state.nitroCooldown = Math.min(state.nitroCooldown, 0.18);
   }
 
   reset({ state }: Omit<SystemContext, 'dt' | 'scroll'>): void {
@@ -67,8 +94,9 @@ export class RunDirectorSystem implements GameSystem {
     state.eventSerial = 0;
     state.theme = 'sunset';
     state.intensity = 0;
-    state.trafficIntensity = 0.48;
+    state.trafficIntensity = 0.5;
     state.policePressure = 0;
+    state.laneCount = 4;
   }
 
   private advanceBeat(state: SystemContext['state']): void {
@@ -80,18 +108,19 @@ export class RunDirectorSystem implements GameSystem {
     }
 
     if (state.event !== 'cruise') {
-      this.start(state, 'cruise', randomRange(5.5, RUN_DIRECTOR.recoverySeconds + 2));
+      this.start(state, 'cruise', randomRange(4.8, RUN_DIRECTOR.recoverySeconds + 1.5));
       return;
     }
 
-    const event = this.pickEndlessEvent(state.stars);
+    const event = this.pickEndlessEvent(state.stars, state.elapsed);
     this.start(state, event, randomRange(RUN_DIRECTOR.eventMinSeconds, RUN_DIRECTOR.eventMaxSeconds));
   }
 
-  private pickEndlessEvent(stars: number): RunEventId {
-    let pool = [...LATE_EVENTS].filter((event) => event !== this.lastSpectacle);
+  private pickEndlessEvent(stars: number, elapsed: number): RunEventId {
+    let pool = [...ENDLESS_EVENTS].filter((event) => event !== this.lastSpectacle);
     if (stars < 2) pool = pool.filter((event) => event !== 'police');
     if (stars < 4 && Math.random() < 0.58) pool = pool.filter((event) => event !== 'roadblock');
+    if (elapsed < 105) pool = pool.filter((event) => event !== 'laneSqueeze');
     if (pool.length === 0) pool = ['coinRush', 'construction', 'nitroRush'];
     return pool[Math.floor(Math.random() * pool.length)] ?? 'coinRush';
   }
@@ -101,6 +130,7 @@ export class RunDirectorSystem implements GameSystem {
     state.eventVariant = rollEventVariant(event);
     state.eventRemaining = seconds;
     state.eventSerial += 1;
+    state.laneCount = event === 'laneSqueeze' ? 3 : 4;
     if (event !== 'cruise') this.lastSpectacle = event;
 
     const nextTheme = this.themeForState(state.elapsed, event);
@@ -125,20 +155,20 @@ export class RunDirectorSystem implements GameSystem {
 }
 
 function buildOpeningBeats(): Beat[] {
-  const beats: Beat[] = [{ event: 'cruise', seconds: randomRange(10, 14) }];
+  const beats: Beat[] = [{ event: 'cruise', seconds: randomRange(9.5, 13) }];
   const early = shuffled(EARLY_EVENTS).slice(0, 3);
-  const late = shuffled(LATE_EVENTS).slice(0, 4);
+  const late = shuffled(OPENING_LATE_EVENTS).slice(0, 4);
 
   for (const event of early) {
     beats.push({ event, seconds: durationForEvent(event, false) });
-    beats.push({ event: 'cruise', seconds: randomRange(5, 8) });
+    beats.push({ event: 'cruise', seconds: randomRange(4.5, 7.2) });
   }
 
   let previous: RunEventId = early[early.length - 1] ?? 'cruise';
   for (let event of late) {
     if (event === previous) event = event === 'coinRush' ? 'construction' : 'coinRush';
     beats.push({ event, seconds: durationForEvent(event, true) });
-    beats.push({ event: 'cruise', seconds: randomRange(5.5, 8.5) });
+    beats.push({ event: 'cruise', seconds: randomRange(4.8, 7.5) });
     previous = event;
   }
 
@@ -146,13 +176,13 @@ function buildOpeningBeats(): Beat[] {
 }
 
 function buildThemeWindows(): ThemeWindow[] {
-  const route = shuffled(WORLD_THEMES);
-  let start = randomRange(27, 34);
+  const route = shuffled(WORLD_THEMES).slice(0, 7);
+  let start = randomRange(24, 30);
   const windows: ThemeWindow[] = [];
 
   for (const theme of route) {
     windows.push({ start, theme });
-    start += randomRange(30, 43);
+    start += randomRange(25, 36);
   }
 
   return windows;
@@ -160,7 +190,6 @@ function buildThemeWindows(): ThemeWindow[] {
 
 function rollEventVariant(event: RunEventId): number {
   if (event === 'cruise') return 0;
-  // Variant 3 is the deliberately rare, extra-chaotic version (~9%).
   if (Math.random() < 0.09) return 3;
   return Math.floor(Math.random() * 3);
 }
@@ -179,6 +208,8 @@ function durationForEvent(event: RunEventId, late: boolean): number {
       return randomRange(12, 18);
     case 'roadblock':
       return randomRange(9, 13.5);
+    case 'laneSqueeze':
+      return randomRange(11, 16);
     case 'cruise':
       return randomRange(5, 8);
   }
@@ -198,7 +229,7 @@ function pressureForEvent(event: RunEventId): number {
     case 'cruise':
       return 0;
     case 'coinRush':
-      return -0.08;
+      return -0.06;
     case 'construction':
       return 0.12;
     case 'tunnel':
@@ -209,5 +240,7 @@ function pressureForEvent(event: RunEventId): number {
       return 0.16;
     case 'roadblock':
       return 0.22;
+    case 'laneSqueeze':
+      return 0.15;
   }
 }

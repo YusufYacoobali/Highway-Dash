@@ -24,26 +24,35 @@ const TUNNEL_SPACING = 16;
 const STREETLIGHT_SEGMENTS = 12;
 const STREETLIGHT_SPACING = 18;
 const RAIN_COUNT = 190;
+const SNOW_COUNT = 150;
 
-/**
- * Lightweight live-world dressing. Expensive detail is merged/shared wherever
- * possible so the game can visibly change chapters without exploding draw calls.
- */
+/** Lightweight live-world dressing with several visually distinct chapters. */
 export class WorldThemeSystem implements GameSystem {
   readonly name = 'worldTheme';
 
   private readonly tunnel = new Group();
   private readonly streetlights = new Group();
   private readonly coastWater = new Group();
+  private readonly lavaFields = new Group();
   private readonly rain: Points;
+  private readonly snow: Points;
   private currentTheme: WorldThemeId | null = null;
 
   constructor(private readonly scene: Scene) {
     this.buildTunnel();
     this.buildStreetlights();
     this.buildCoast();
-    this.rain = this.buildRain();
-    this.scene.add(this.tunnel, this.streetlights, this.coastWater, this.rain);
+    this.buildLava();
+    this.rain = this.buildParticles(RAIN_COUNT, 0xbfdcff, 0.09, 'world-rain');
+    this.snow = this.buildParticles(SNOW_COUNT, 0xffffff, 0.16, 'world-snow');
+    this.scene.add(
+      this.tunnel,
+      this.streetlights,
+      this.coastWater,
+      this.lavaFields,
+      this.rain,
+      this.snow,
+    );
     this.applyTheme('sunset');
   }
 
@@ -53,6 +62,7 @@ export class WorldThemeSystem implements GameSystem {
     if (this.tunnel.visible) this.scrollRepeater(this.tunnel, scroll, TUNNEL_SPACING);
     if (this.streetlights.visible) this.scrollRepeater(this.streetlights, scroll, STREETLIGHT_SPACING);
     if (this.rain.visible) this.updateRain(scroll, dt);
+    if (this.snow.visible) this.updateSnow(scroll, dt);
   }
 
   reset({ state }: Omit<SystemContext, 'dt' | 'scroll'>): void {
@@ -85,13 +95,23 @@ export class WorldThemeSystem implements GameSystem {
       this.scene.fog.far = palette.fogFar;
     }
 
-    if (sun) sun.visible = theme !== 'night' && theme !== 'tunnel' && theme !== 'storm';
-    if (clouds) clouds.visible = theme !== 'tunnel';
+    if (sun) {
+      sun.visible = !['night', 'neon', 'tunnel', 'storm', 'volcano'].includes(theme);
+      const sunMaterial = sun.material as MeshBasicMaterial;
+      sunMaterial.color.set(
+        theme === 'desert' ? '#fff0a3' : theme === 'snow' ? '#dff5ff' : '#fff2c2',
+      );
+    }
+    if (clouds) clouds.visible = theme !== 'tunnel' && theme !== 'volcano';
 
     this.tunnel.visible = theme === 'tunnel';
-    this.streetlights.visible = theme === 'night' || theme === 'storm';
+    this.streetlights.visible = theme === 'night' || theme === 'storm' || theme === 'neon';
     this.coastWater.visible = theme === 'coast';
+    this.lavaFields.visible = theme === 'volcano';
     this.rain.visible = theme === 'storm';
+    this.snow.visible = theme === 'snow';
+    this.recolorStreetlights(theme);
+    this.recolorScenery(theme);
 
     this.scene.traverse((object) => {
       if (object instanceof HemisphereLight) {
@@ -102,6 +122,24 @@ export class WorldThemeSystem implements GameSystem {
         object.intensity = palette.sunIntensity;
         object.color.set(palette.sunColor);
       }
+    });
+  }
+
+  private recolorScenery(theme: WorldThemeId): void {
+    const scenery = sceneryPalette(theme);
+    this.scene.traverse((object) => {
+      if (!(object instanceof Mesh) || !(object.material instanceof MeshLambertMaterial)) return;
+
+      if (object.name === 'world-tree-trunk') {
+        object.material.color.set(scenery.trunk);
+        return;
+      }
+      if (object.name !== 'world-tree-leaves') return;
+
+      const index = Number(object.userData.paletteIndex ?? 0) % scenery.leaves.length;
+      object.material.color.set(scenery.leaves[index] ?? scenery.leaves[0]);
+      object.material.emissive.set(scenery.emissive);
+      object.material.emissiveIntensity = scenery.emissiveIntensity;
     });
   }
 
@@ -148,11 +186,26 @@ export class WorldThemeSystem implements GameSystem {
         const pole = new Mesh(poleGeometry, poleMaterial);
         pole.position.set(side * 8.2, 3.25, 0);
         const lamp = new Mesh(lampGeometry, i % 2 ? lampA : lampB);
+        lamp.name = i % 2 ? 'street-lamp-a' : 'street-lamp-b';
         lamp.position.set(side * 8.2, 6.48, 0);
         pair.add(pole, lamp);
       }
       this.streetlights.add(pair);
     }
+  }
+
+  private recolorStreetlights(theme: WorldThemeId): void {
+    const colors =
+      theme === 'neon'
+        ? ['#23f7ff', '#ff36bd']
+        : theme === 'storm'
+          ? ['#d4e8ff', '#91b8ff']
+          : ['#64dcff', '#ff5fa8'];
+
+    this.streetlights.traverse((object) => {
+      if (!(object instanceof Mesh) || !(object.material instanceof MeshBasicMaterial)) return;
+      object.material.color.set(object.name === 'street-lamp-a' ? colors[0] : colors[1]);
+    });
   }
 
   private buildCoast(): void {
@@ -168,9 +221,22 @@ export class WorldThemeSystem implements GameSystem {
     }
   }
 
-  private buildRain(): Points {
-    const positions = new Float32Array(RAIN_COUNT * 3);
-    for (let i = 0; i < RAIN_COUNT; i++) {
+  private buildLava(): void {
+    this.lavaFields.name = 'world-lava-fields';
+    const lavaMaterial = new MeshBasicMaterial({ color: 0xff5b18 });
+    const lavaGeometry = new PlaneGeometry(62, ROAD_LENGTH);
+
+    for (const side of [-1, 1]) {
+      const lava = new Mesh(lavaGeometry, lavaMaterial);
+      lava.rotation.x = -Math.PI / 2;
+      lava.position.set(side * 38, -0.045, -180);
+      this.lavaFields.add(lava);
+    }
+  }
+
+  private buildParticles(count: number, color: number, size: number, name: string): Points {
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
       const j = i * 3;
       positions[j] = (Math.random() - 0.5) * 34;
       positions[j + 1] = 2 + Math.random() * 22;
@@ -178,10 +244,15 @@ export class WorldThemeSystem implements GameSystem {
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
-    const material = new PointsMaterial({ color: new Color(0xbfdcff), size: 0.09, transparent: true, opacity: 0.78 });
-    const rain = new Points(geometry, material);
-    rain.name = 'world-rain';
-    return rain;
+    const material = new PointsMaterial({
+      color: new Color(color),
+      size,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const points = new Points(geometry, material);
+    points.name = name;
+    return points;
   }
 
   private updateRain(scroll: number, dt: number): void {
@@ -193,6 +264,22 @@ export class WorldThemeSystem implements GameSystem {
       if (z > 20) z -= 185;
       position.setY(i, y);
       position.setZ(i, z);
+    }
+    position.needsUpdate = true;
+  }
+
+  private updateSnow(scroll: number, dt: number): void {
+    const position = this.snow.geometry.getAttribute('position') as Float32BufferAttribute;
+    for (let i = 0; i < position.count; i++) {
+      let x = position.getX(i) + Math.sin(i * 0.7 + dt * 3) * dt * 0.8;
+      let y = position.getY(i) - dt * (4 + (i % 5));
+      let z = position.getZ(i) + scroll * 0.3;
+      if (y < 0.3) {
+        y = 16 + Math.random() * 10;
+        x = (Math.random() - 0.5) * 34;
+      }
+      if (z > 20) z -= 185;
+      position.setXYZ(i, x, y, z);
     }
     position.needsUpdate = true;
   }
@@ -209,6 +296,81 @@ export class WorldThemeSystem implements GameSystem {
     group.children.forEach((child, index) => {
       child.position.z = 14 - index * spacing;
     });
+  }
+}
+
+function sceneryPalette(theme: WorldThemeId): {
+  trunk: string;
+  leaves: readonly string[];
+  emissive: string;
+  emissiveIntensity: number;
+} {
+  switch (theme) {
+    case 'desert':
+      return {
+        trunk: '#426b36',
+        leaves: ['#4f823f', '#659344', '#7b9c4b'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'snow':
+      return {
+        trunk: '#48525a',
+        leaves: ['#e8f6ff', '#bfdbe7', '#d5edf5'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'neon':
+      return {
+        trunk: '#182342',
+        leaves: ['#23cde8', '#9d4dff', '#ff3fae'],
+        emissive: '#29155a',
+        emissiveIntensity: 0.32,
+      };
+    case 'volcano':
+      return {
+        trunk: '#1d1715',
+        leaves: ['#5a2119', '#3b2420', '#7a2b1e'],
+        emissive: '#45130a',
+        emissiveIntensity: 0.24,
+      };
+    case 'storm':
+      return {
+        trunk: '#554535',
+        leaves: ['#315f46', '#396c4e', '#284f3c'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'night':
+      return {
+        trunk: '#3a3440',
+        leaves: ['#214f54', '#285d61', '#1b4348'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'tunnel':
+      return {
+        trunk: '#2f3642',
+        leaves: ['#334457', '#3b4d62', '#2b3c50'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'coast':
+      return {
+        trunk: '#8a5930',
+        leaves: ['#2d9f57', '#39b966', '#248c4d'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
+    case 'forest':
+    case 'sunset':
+    default:
+      return {
+        trunk: '#8b5a2b',
+        leaves: ['#3f9e33', '#4fbf3f', '#358c2e'],
+        emissive: '#000000',
+        emissiveIntensity: 0,
+      };
   }
 }
 
@@ -243,6 +405,30 @@ function themePalette(theme: WorldThemeId) {
         skyTint: '#647086', ground: '#315054', asphalt: '#2b3137', fog: '#536275',
         fogNear: 42, fogFar: 135, hemi: 0.58, hemiColor: '#a8bdd1', groundLight: '#26373d',
         sunIntensity: 0.42, sunColor: '#bcc7d2',
+      };
+    case 'desert':
+      return {
+        skyTint: '#ffd6a0', ground: '#c78c43', asphalt: '#4b4540', fog: '#e5b46e',
+        fogNear: 58, fogFar: 170, hemi: 1.02, hemiColor: '#fff1cf', groundLight: '#8c5d31',
+        sunIntensity: 1.72, sunColor: '#fff0b0',
+      };
+    case 'snow':
+      return {
+        skyTint: '#d9efff', ground: '#d8e6ed', asphalt: '#4d5962', fog: '#c9dfeb',
+        fogNear: 45, fogFar: 145, hemi: 1.05, hemiColor: '#f2fbff', groundLight: '#9eafb8',
+        sunIntensity: 0.9, sunColor: '#e7f7ff',
+      };
+    case 'neon':
+      return {
+        skyTint: '#24184a', ground: '#101a32', asphalt: '#171a28', fog: '#291d52',
+        fogNear: 48, fogFar: 152, hemi: 0.58, hemiColor: '#63dcff', groundLight: '#15102c',
+        sunIntensity: 0.4, sunColor: '#ff4ec4',
+      };
+    case 'volcano':
+      return {
+        skyTint: '#5d2420', ground: '#261d1b', asphalt: '#242020', fog: '#6e2b1f',
+        fogNear: 40, fogFar: 128, hemi: 0.5, hemiColor: '#ff8a4b', groundLight: '#23120e',
+        sunIntensity: 0.48, sunColor: '#ff5b21',
       };
     case 'sunset':
     default:

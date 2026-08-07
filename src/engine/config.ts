@@ -1,8 +1,12 @@
 /** World-space constants shared by every system. Distances are metres. */
 
 export const LANE_OFFSETS = [-4.5, -1.5, 1.5, 4.5] as const;
+export const THREE_LANE_OFFSETS = [-4, 0, 4] as const;
 export const ROAD_WIDTH = 13;
 export const ROAD_LENGTH = 620;
+
+export const laneOffsetsFor = (laneCount: 3 | 4): readonly number[] =>
+  laneCount === 3 ? THREE_LANE_OFFSETS : LANE_OFFSETS;
 
 /** How far the car may drift from the centre line before the barriers. */
 export const STEER_LIMIT = 5.4;
@@ -10,7 +14,7 @@ export const STEER_LIMIT = 5.4;
 export const SPAWN_Z = -150;
 export const DESPAWN_Z = 20;
 
-export const ATTRACT_SPEED = 30;
+export const ATTRACT_SPEED = 38;
 
 export const CAMERA = {
   fov: 66,
@@ -20,42 +24,42 @@ export const CAMERA = {
   distance: 14.6,
   followFactor: 0.62,
   followRate: 11,
-  nitroFovBoost: 18,
-  nitroPullback: 2.6,
+  nitroFovBoost: 23,
+  nitroPullback: 3.4,
 } as const;
 
 /**
- * Difficulty is deliberately broad now. The RunDirector supplies short waves
- * of pressure instead of continuously turning every knob upward at once.
+ * Starts readable, then deliberately fills the road later in the run. The
+ * director still owns fairness; these values simply give it enough cars to
+ * create pressure instead of leaving giant empty stretches.
  */
 export const TRAFFIC = {
   minSpeed: 10,
-  maxSpeed: 19,
+  maxSpeed: 20,
   playerHalfLength: 2.5,
   collisionWidthScale: 0.82,
   truckCollisionWidthScale: 0.74,
   laneJitter: 0.14,
   truckLaneJitter: 0.03,
-  baseInterval: 1.6,
-  minInterval: 0.62,
-  difficultyRampSeconds: 180,
-  attractInterval: 1.3,
-  doubleSpawnAfter: 38,
-  doubleSpawnBaseChance: 0.03,
-  doubleSpawnMaxChance: 0.22,
-  tripleSpawnAfter: 105,
-  tripleSpawnMaxChance: 0.055,
-  runPrefillCount: 4,
-  attractPrefillCount: 5,
-  /** Meshy GLBs are heavy, so spectacle comes from choreography rather than count. */
-  maxActiveRun: 9,
-  maxActiveAttract: 6,
-  ramSideSpeedMin: 12,
-  ramSideSpeedMax: 19,
-  ramLiftMin: 9,
-  ramLiftMax: 15,
-  ramForwardSpeedMin: 26,
-  ramForwardSpeedMax: 38,
+  baseInterval: 1.5,
+  minInterval: 0.38,
+  difficultyRampSeconds: 155,
+  attractInterval: 0.92,
+  doubleSpawnAfter: 30,
+  doubleSpawnBaseChance: 0.045,
+  doubleSpawnMaxChance: 0.34,
+  tripleSpawnAfter: 78,
+  tripleSpawnMaxChance: 0.11,
+  runPrefillCount: 5,
+  attractPrefillCount: 7,
+  maxActiveRun: 14,
+  maxActiveAttract: 8,
+  ramSideSpeedMin: 15,
+  ramSideSpeedMax: 24,
+  ramLiftMin: 11,
+  ramLiftMax: 18,
+  ramForwardSpeedMin: 32,
+  ramForwardSpeedMax: 48,
 } as const;
 
 export const PICKUPS = {
@@ -85,9 +89,13 @@ export const SCORING = {
   speedToKmh: 3.9,
 } as const;
 
+/** Nitro is a short, unmistakable power fantasy followed by a forgiving exit. */
 export const NITRO = {
-  cooldownSeconds: 4.2,
-  frenzyCooldownSeconds: 0.8,
+  cooldownSeconds: 4.8,
+  frenzyCooldownSeconds: 0.55,
+  graceSeconds: 1.0,
+  ignitionHitStopSeconds: 0.055,
+  ignitionHitStopScale: 0.16,
 } as const;
 
 export const SLOW_MO = {
@@ -100,10 +108,10 @@ export const SLOW_MO = {
 
 export const RUN_DIRECTOR = {
   graceSeconds: 13,
-  endlessDifficultySeconds: 210,
+  endlessDifficultySeconds: 205,
   eventMinSeconds: 8,
   eventMaxSeconds: 15,
-  recoverySeconds: 7,
+  recoverySeconds: 6.5,
 } as const;
 
 export const CRASH = {

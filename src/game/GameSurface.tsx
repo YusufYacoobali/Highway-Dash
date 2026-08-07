@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { LayoutChangeEvent, PanResponder, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 
 import type { CarDefinition } from '@/domain/cars';
@@ -11,6 +11,7 @@ import type { EngineEvents, EngineMode, Telemetry } from '@/engine/types';
 
 export interface GameSurfaceHandle {
   fireNitro(): boolean;
+  steerTo(fraction: number): void;
   retireRun(): RunResult | null;
 }
 
@@ -48,7 +49,6 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   const engineRef = useRef<GameEngine | null>(null);
   const rendererRef = useRef<RendererHandle | null>(null);
   const frameRef = useRef<number | null>(null);
-  const widthRef = useRef(1);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
@@ -99,12 +99,10 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     engine.events.on('eventStarted', (payload) => callbacks.current.onEventStarted(payload));
     engine.events.on('crashed', (result) => callbacks.current.onCrash(result));
 
-    // The menu is static artwork, so wait for the active mobile GLBs before play.
     const modelsReady = await engine.prepareHighDetailModels();
     if (engineRef.current !== engine) return;
     if (modelsReady) engine.activateHighDetailModels();
 
-    // Props may have changed while GLBs decoded (for example Play was tapped).
     const resolved = latest.current;
     engine.setTuning(resolved.tuning);
     engine.setPlayerCar(resolved.car);
@@ -162,37 +160,18 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     if (!handleRef) return;
     handleRef.current = {
       fireNitro: () => engineRef.current?.fireNitro() ?? false,
+      steerTo: (fraction) => engineRef.current?.steerTo(fraction),
       retireRun: () => engineRef.current?.retire() ?? null,
     };
   }, [handleRef]);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => {
-          engineRef.current?.steerTo(event.nativeEvent.locationX / widthRef.current);
-        },
-        onPanResponderMove: (event) => {
-          engineRef.current?.steerTo(event.nativeEvent.locationX / widthRef.current);
-        },
-      }),
-    [],
-  );
-
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
-    widthRef.current = Math.max(1, width);
     engineRef.current?.setViewportAspect(width / Math.max(1, height));
   }, []);
 
   return (
-    <View
-      style={StyleSheet.absoluteFill}
-      onLayout={handleLayout}
-      {...(mode === 'run' ? panResponder.panHandlers : {})}
-    >
+    <View style={StyleSheet.absoluteFill} onLayout={handleLayout} pointerEvents="none">
       <GLView
         style={StyleSheet.absoluteFill}
         msaaSamples={0}

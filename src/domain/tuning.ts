@@ -14,7 +14,7 @@ export interface RunTuning {
 
 /**
  * Fast enough to feel exciting immediately, but leaves headroom for authored
- * event spikes. Difficulty should come from readable situations, not a 60s wall.
+ * event spikes. Nitro is intentionally much more dramatic than normal cruise.
  */
 export const BASE_TUNING: RunTuning = {
   baseSpeed: 56,
@@ -23,8 +23,8 @@ export const BASE_TUNING: RunTuning = {
   steerRate: 14,
   coinPickupRadius: 1.9,
   nearMissWindow: 3.45,
-  nitroMultiplier: 1.72,
-  nitroSeconds: 2.2,
+  nitroMultiplier: 1.95,
+  nitroSeconds: 2.65,
 };
 
 const PER_LEVEL = {

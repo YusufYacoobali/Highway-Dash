@@ -1,5 +1,11 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import {
+  LayoutChangeEvent,
+  NativeSyntheticEvent,
+  NativeTouchEvent,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { findCar, type CarDefinition } from '@/domain/cars';
 import { describeCrateReward, type ShopBundle } from '@/domain/economy';
@@ -35,12 +41,17 @@ import { useRunStore } from '@/state/runStore';
 import { palette } from '@/ui/theme';
 import { playerSnapshot } from './playerSnapshot';
 
+const NITRO_TOUCH_ZONE_WIDTH = 132;
+const NITRO_TOUCH_ZONE_HEIGHT = 178;
+
 /** Persistent 3D surface + React overlay composition root. */
 export const GameStage: React.FC = () => {
   const { feedback, engagement } = useServices();
   const surface = useRef<GameSurfaceHandle | null>(null);
   const runBestTarget = useRef(0);
   const announcedBest = useRef(false);
+  const stageSize = useRef({ width: 1, height: 1 });
+  const steeringTouchId = useRef<number | null>(null);
 
   const screen = useNavigationStore((s) => s.screen);
   const navigate = useNavigationStore((s) => s.navigate);
@@ -61,6 +72,7 @@ export const GameStage: React.FC = () => {
     feedback.play('tap');
     runBestTarget.current = useProfileStore.getState().bestDistance;
     announcedBest.current = false;
+    steeringTouchId.current = null;
     resetTelemetry();
     clearPops();
     beginRun();
@@ -92,6 +104,7 @@ export const GameStage: React.FC = () => {
 
   const handleCrash = useCallback(
     (result: RunResult) => {
+      steeringTouchId.current = null;
       feedback.play('crash');
       bankRun(result);
       navigate('crash');
@@ -100,6 +113,7 @@ export const GameStage: React.FC = () => {
   );
 
   const handleQuitRun = useCallback(() => {
+    steeringTouchId.current = null;
     feedback.play('tap');
     const result = surface.current?.retireRun();
     if (result) bankRun(result);
@@ -141,9 +155,9 @@ export const GameStage: React.FC = () => {
   const handleCoinCollected = useCallback(() => feedback.play('coin'), [feedback]);
 
   const handleTrafficRammed = useCallback(
-    ({ combo }: EngineEvents['trafficRammed']) => {
-      feedback.play('ram');
-      pushRamPop(combo);
+    ({ smashCount, grace }: EngineEvents['trafficRammed']) => {
+      feedback.play(grace ? 'nearMiss' : 'ram');
+      pushRamPop(smashCount, grace);
     },
     [feedback],
   );
@@ -160,8 +174,64 @@ export const GameStage: React.FC = () => {
     if (surface.current?.fireNitro()) feedback.play('nearMiss');
   }, [feedback]);
 
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    stageSize.current = { width: Math.max(1, width), height: Math.max(1, height) };
+  }, []);
+
+  const isNitroZone = useCallback((touch: NativeTouchEvent): boolean => {
+    const { width, height } = stageSize.current;
+    return touch.pageX > width - NITRO_TOUCH_ZONE_WIDTH && touch.pageY > height - NITRO_TOUCH_ZONE_HEIGHT;
+  }, []);
+
+  const steerFromTouch = useCallback((touch: NativeTouchEvent) => {
+    const fraction = Math.max(0, Math.min(1, touch.pageX / stageSize.current.width));
+    surface.current?.steerTo(fraction);
+  }, []);
+
+  const handleTouchStart = useCallback(
+    (event: NativeSyntheticEvent<NativeTouchEvent>) => {
+      if (screen !== 'run') return;
+
+      const changedTouches = event.nativeEvent.changedTouches;
+      if (changedTouches.some((touch) => isNitroZone(touch))) handleNitro();
+
+      if (steeringTouchId.current !== null) return;
+      const candidate = changedTouches.find((touch) => !isNitroZone(touch));
+      if (!candidate) return;
+      steeringTouchId.current = candidate.identifier;
+      steerFromTouch(candidate);
+    },
+    [handleNitro, isNitroZone, screen, steerFromTouch],
+  );
+
+  const handleTouchMove = useCallback(
+    (event: NativeSyntheticEvent<NativeTouchEvent>) => {
+      if (screen !== 'run' || steeringTouchId.current === null) return;
+      const steeringTouch = event.nativeEvent.touches.find(
+        (touch) => touch.identifier === steeringTouchId.current,
+      );
+      if (steeringTouch) steerFromTouch(steeringTouch);
+    },
+    [screen, steerFromTouch],
+  );
+
+  const handleTouchEnd = useCallback((event: NativeSyntheticEvent<NativeTouchEvent>) => {
+    const endedSteeringTouch = event.nativeEvent.changedTouches.some(
+      (touch) => touch.identifier === steeringTouchId.current,
+    );
+    if (endedSteeringTouch) steeringTouchId.current = null;
+  }, []);
+
   return (
-    <View style={styles.root}>
+    <View
+      style={styles.root}
+      onLayout={handleLayout}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
       <GameSurface
         mode={screen === 'run' || screen === 'crash' ? 'run' : 'attract'}
         car={car}
