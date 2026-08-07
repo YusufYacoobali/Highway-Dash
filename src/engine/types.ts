@@ -7,6 +7,17 @@ import type { VehicleSilhouette } from '@/domain/cars';
 /** `attract` is the idle traffic loop that plays behind the main menu. */
 export type EngineMode = 'attract' | 'run';
 
+export type RunEventId =
+  | 'cruise'
+  | 'coinRush'
+  | 'construction'
+  | 'tunnel'
+  | 'nitroRush'
+  | 'police'
+  | 'roadblock';
+
+export type WorldThemeId = 'sunset' | 'forest' | 'tunnel' | 'night' | 'coast' | 'storm';
+
 /** Snapshot pushed to the HUD. Plain data so it can cross the React boundary. */
 export interface Telemetry {
   kmh: number;
@@ -18,6 +29,10 @@ export interface Telemetry {
   started: boolean;
   nitroActive: boolean;
   nitroReady: boolean;
+  event: RunEventId;
+  eventRemaining: number;
+  theme: WorldThemeId;
+  intensity: number;
 }
 
 export const EMPTY_TELEMETRY: Telemetry = {
@@ -29,6 +44,10 @@ export const EMPTY_TELEMETRY: Telemetry = {
   started: false,
   nitroActive: false,
   nitroReady: true,
+  event: 'cruise',
+  eventRemaining: 0,
+  theme: 'sunset',
+  intensity: 0,
 };
 
 export interface EngineEvents {
@@ -37,6 +56,9 @@ export interface EngineEvents {
   coinCollected: { total: number };
   starGained: { stars: number };
   nitroFired: Record<string, never>;
+  trafficRammed: { combo: number };
+  eventStarted: { event: RunEventId; theme: WorldThemeId };
+  themeChanged: { theme: WorldThemeId };
   crashed: RunResult;
 }
 
@@ -65,6 +87,15 @@ export interface RunState {
   started: boolean;
   crashed: boolean;
   cameraShake: number;
+  slowMoRemaining: number;
+  slowMoScale: number;
+  event: RunEventId;
+  eventRemaining: number;
+  eventSerial: number;
+  theme: WorldThemeId;
+  intensity: number;
+  trafficIntensity: number;
+  policePressure: number;
 }
 
 /** Everything a system may touch during a frame. */
