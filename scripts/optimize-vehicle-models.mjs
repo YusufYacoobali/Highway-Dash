@@ -9,10 +9,12 @@ import { MeshoptSimplifier } from 'meshoptimizer';
 const INPUT_DIR = 'assets/new-models';
 const OUTPUT_DIR = 'assets/game-models';
 
-// The previous ~10k target was excellent for FPS but too destructive for these
-// very dense Meshy cars. ~45k retains the silhouette, wheel arches, glass and
-// body curvature while still cutting ~90% of the source geometry.
-const TARGET_TRIANGLES = 45000;
+// Models already compressed to roughly this range are considered game-ready.
+// Do NOT decimate or weld them again — preserve the authored car shape exactly.
+const MOBILE_READY_MAX_TRIANGLES = 35000;
+
+// Only very heavy source models are simplified, and even then conservatively.
+const HEAVY_MODEL_TARGET_TRIANGLES = 45000;
 
 await MeshoptSimplifier.ready;
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -30,8 +32,14 @@ for (const file of files) {
   const buffer = root.listBuffers()[0] ?? document.createBuffer('game-buffer');
 
   const beforeTriangles = countTriangles(document);
+  const alreadyMobileReady = beforeTriangles <= MOBILE_READY_MAX_TRIANGLES;
+
+  // Bake the authored base-colour texture into vertex colours. This keeps the
+  // painted look while avoiding React Native / Expo GL image-texture decoding.
   await bakeBaseColorToVertexColors(document, buffer);
 
+  // One simple material for every primitive = cheap clones and very few draw
+  // calls. Vertex colours carry the appearance, so no texture maps are needed.
   const gameMaterial = document
     .createMaterial('mobile-vertex-color')
     .setBaseColorFactor([1, 1, 1, 1])
@@ -43,27 +51,30 @@ for (const file of files) {
     for (const primitive of mesh.listPrimitives()) primitive.setMaterial(gameMaterial);
   }
 
-  // Only weld genuinely near-identical vertices. The old aggressive normal
-  // tolerance could erase important hard edges around windows/wheels.
-  await document.transform(dedup(), weld({ toleranceNormal: 0.05 }), prune());
+  if (alreadyMobileReady) {
+    // Important: a hand-compressed ~30k car is already where we want it.
+    // No weld() and no simplify(): keep every remaining silhouette/detail edge.
+    await document.transform(dedup(), prune());
+  } else {
+    // Heavy Meshy sources still need geometry reduction before runtime.
+    await document.transform(dedup(), weld({ toleranceNormal: 0.05 }), prune());
 
-  const currentTriangles = countTriangles(document);
-  if (currentTriangles > TARGET_TRIANGLES * 1.15) {
-    const ratio = Math.max(0.05, Math.min(0.95, TARGET_TRIANGLES / currentTriangles));
-    await document.transform(
-      simplify({
-        simplifier: MeshoptSimplifier,
-        ratio,
-        // Very small geometric error: favour recognizable car shape over the
-        // last few KB. Border locking also protects panel/wheel silhouettes.
-        error: 0.0008,
-        lockBorder: true,
-      }),
-    );
+    const currentTriangles = countTriangles(document);
+    if (currentTriangles > HEAVY_MODEL_TARGET_TRIANGLES * 1.15) {
+      const ratio = Math.max(0.05, Math.min(0.95, HEAVY_MODEL_TARGET_TRIANGLES / currentTriangles));
+      await document.transform(
+        simplify({
+          simplifier: MeshoptSimplifier,
+          ratio,
+          error: 0.0008,
+          lockBorder: true,
+        }),
+      );
+    }
   }
 
-  // Collapse to a cheap runtime representation after simplification. This
-  // reduces draw calls without changing the visible geometry.
+  // Flatten and join after geometry decisions. This preserves the visible
+  // geometry while collapsing compatible primitives into a cheaper runtime mesh.
   await document.transform(flatten(), join({ keepMeshes: false }), dedup(), prune());
 
   for (const material of root.listMaterials()) {
@@ -81,7 +92,7 @@ for (const file of files) {
   const afterTriangles = countTriangles(document);
   const stat = await fs.stat(output);
   console.log(
-    `[vehicle-opt] ${file}: ${beforeTriangles.toLocaleString()} -> ${afterTriangles.toLocaleString()} tris, ${(stat.size / 1024).toFixed(0)} KB`,
+    `[vehicle-opt] ${file}: ${beforeTriangles.toLocaleString()} -> ${afterTriangles.toLocaleString()} tris, ${(stat.size / 1024).toFixed(0)} KB${alreadyMobileReady ? ' (geometry preserved)' : ''}`,
   );
 }
 
