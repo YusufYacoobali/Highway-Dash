@@ -14,10 +14,7 @@ interface PoliceRig {
   blue: Mesh;
 }
 
-/**
- * Police are readable on-screen threats, not a hidden wanted timer. They live
- * behind the player, close in as heat rises and flash against the night/tunnel.
- */
+/** Police chase flavour changes per event without adding expensive new models. */
 export class PoliceSystem implements GameSystem {
   readonly name = 'police';
 
@@ -53,8 +50,11 @@ export class PoliceSystem implements GameSystem {
   update({ state, dt }: SystemContext): void {
     this.flashClock += dt;
     const chaseActive = state.mode === 'run' && !state.crashed && (state.stars >= 2 || state.event === 'police');
-    const desired = !chaseActive ? 0 : state.stars >= 4 ? 2 : 1;
-    const flash = Math.floor(this.flashClock * 9) % 2 === 0;
+    const variant = state.event === 'police' ? state.eventVariant % 4 : 0;
+    const forcePair = state.event === 'police' && (variant === 1 || variant === 2);
+    const desired = !chaseActive ? 0 : state.stars >= 4 || forcePair ? 2 : 1;
+    const flashRate = variant === 3 ? 13 : 9;
+    const flash = Math.floor(this.flashClock * flashRate) % 2 === 0;
 
     this.rigs.forEach((rig, index) => {
       const active = index < desired;
@@ -64,18 +64,26 @@ export class PoliceSystem implements GameSystem {
       rig.red.visible = flash !== (index % 2 === 0);
       rig.blue.visible = !rig.red.visible;
 
-      const lane = index === 0 ? 1 : 2;
-      const weave = Math.sin(state.elapsed * (1.6 + index * 0.18) + index * 2.2) * 0.72;
+      const baseLane = index === 0 ? 1 : 2;
+      const lane = variant === 2 ? (index === 0 ? 0 : 3) : baseLane;
+      const weaveScale = variant === 1 ? 1.18 : variant === 3 ? 0.92 : 0.72;
+      const weaveRate = variant === 1 ? 2.05 : variant === 3 ? 1.35 : 1.6;
+      const weave = Math.sin(state.elapsed * (weaveRate + index * 0.18) + index * 2.2) * weaveScale;
       const targetX = LANE_OFFSETS[lane] + weave;
-      const pressure = Math.max(state.policePressure, state.event === 'police' ? 0.45 : 0);
-      const targetZ = 15 - pressure * 8 + index * 4.5;
+      const eventPressure = variant === 1 ? 0.66 : variant === 2 ? 0.56 : variant === 3 ? 0.5 : 0.45;
+      const pressure = Math.max(state.policePressure, state.event === 'police' ? eventPressure : 0);
+      const closeOffset = variant === 1 ? 3 : variant === 3 ? 1.5 : 0;
+      const targetZ = 15 - pressure * 8 - closeOffset + index * 4.5;
 
-      rig.vehicle.position.x = damp(rig.vehicle.position.x, targetX, 3.8, dt);
-      rig.vehicle.position.z = damp(rig.vehicle.position.z, targetZ, 2.7, dt);
+      rig.vehicle.position.x = damp(rig.vehicle.position.x, targetX, variant === 1 ? 4.8 : 3.8, dt);
+      rig.vehicle.position.z = damp(rig.vehicle.position.z, targetZ, variant === 1 ? 3.5 : 2.7, dt);
       rig.vehicle.position.y = 0;
       rig.vehicle.rotation.y = -weave * 0.05;
 
-      if (pressure > 0.65) state.cameraShake = Math.max(state.cameraShake, 0.16 + pressure * 0.1);
+      if (pressure > 0.62) {
+        const pulse = variant === 3 ? 0.06 * (0.5 + Math.sin(this.flashClock * 10) * 0.5) : 0;
+        state.cameraShake = Math.max(state.cameraShake, 0.16 + pressure * 0.1 + pulse);
+      }
     });
   }
 
