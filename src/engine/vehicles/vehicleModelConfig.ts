@@ -3,15 +3,15 @@ import type { VehicleSilhouette } from '@/domain/cars';
 /**
  * MODEL TEST SWITCHBOARD
  *
- * For rapid model testing, only edit this file. Metro needs static `require`
- * calls, so every candidate model is registered once in MODEL_LIBRARY and the
- * active mapping below decides which one each engine silhouette uses.
+ * Add each candidate GLB once to MODEL_LIBRARY, then include its id in
+ * ACTIVE_MODEL_POOL. Traffic cycles through every id in the pool so all test
+ * models are guaranteed to appear during the same run.
  */
 export type VehicleModelId = 'azureVelocity' | 'blueBubble' | 'redBubble';
 
 export interface VehicleModelSpec {
   module: number;
-  /** Engine-space length before the global 0.8 vehicle scale is applied. */
+  /** Engine-space length before the global vehicle scale is applied. */
   targetLength: number;
   /** Rotate the authored model so its nose faces forward down the highway. */
   yaw: number;
@@ -36,32 +36,30 @@ export const MODEL_LIBRARY: Record<VehicleModelId, VehicleModelSpec> = {
 };
 
 /**
- * FASTEST TEST SWITCH:
- * Set to one model ID to force EVERY player + traffic car to that GLB.
- * Set back to null to use ACTIVE_VEHICLE_MODEL_MAP below.
+ * Main test switch: every id here appears together in traffic.
+ * When you add more GLBs later, register them above and add their ids here.
  */
-export const FORCE_SINGLE_MODEL: VehicleModelId | null = null;
+export const ACTIVE_MODEL_POOL: readonly VehicleModelId[] = [
+  'azureVelocity',
+  'blueBubble',
+  'redBubble',
+];
 
-/** Mixed test layout. All three models appear during normal play. */
-export const ACTIVE_VEHICLE_MODEL_MAP: Record<VehicleSilhouette, VehicleModelId> = {
-  sports: 'azureVelocity',
-  sedan: 'blueBubble',
-  hatch: 'redBubble',
-  suv: 'azureVelocity',
-  truck: 'redBubble',
-};
+/** Player car for this temporary model-testing setup. */
+export const PLAYER_MODEL_ID: VehicleModelId = 'azureVelocity';
 
 /** Keep the authored Meshy materials while evaluating the models. */
 export const PRESERVE_AUTHORED_MODEL_COLORS = true;
 
-export const ACTIVE_VEHICLE_SILHOUETTES = Object.keys(
-  ACTIVE_VEHICLE_MODEL_MAP,
-) as VehicleSilhouette[];
-
-export function activeModelId(silhouette: VehicleSilhouette): VehicleModelId {
-  return FORCE_SINGLE_MODEL ?? ACTIVE_VEHICLE_MODEL_MAP[silhouette];
+export function activeModelIdAt(index: number): VehicleModelId {
+  return ACTIVE_MODEL_POOL[index % ACTIVE_MODEL_POOL.length] ?? PLAYER_MODEL_ID;
 }
 
-export function activeModelSpec(silhouette: VehicleSilhouette): VehicleModelSpec {
-  return MODEL_LIBRARY[activeModelId(silhouette)];
+export function modelSpec(modelId: VehicleModelId): VehicleModelSpec {
+  return MODEL_LIBRARY[modelId];
+}
+
+/** Procedural fallback still asks by silhouette; give it a sensible test size. */
+export function fallbackModelSpec(_silhouette: VehicleSilhouette): VehicleModelSpec {
+  return MODEL_LIBRARY[PLAYER_MODEL_ID];
 }
