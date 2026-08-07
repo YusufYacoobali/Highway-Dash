@@ -13,7 +13,7 @@ import {
 export interface TrafficObserver {
   /** The player squeezed past a car without touching it. */
   onNearMiss(): void;
-  /** The player hit a car. */
+  /** The player hit a car without nitro. */
   onImpact(): void;
 }
 
@@ -74,12 +74,25 @@ export class TrafficSystem implements GameSystem {
       return;
     }
 
-    const progress = Math.min(1, state.elapsed / TRAFFIC.difficultyRampSeconds);
+    // Ease the ramp so the opening remains generous but the final third gets
+    // much denser instead of staying at the same comfortable cadence.
+    const linear = Math.min(1, state.elapsed / TRAFFIC.difficultyRampSeconds);
+    const difficulty = linear * linear;
     this.spawnTimer =
-      TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * progress;
+      TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * difficulty;
     this.spawn();
 
-    if (state.elapsed > TRAFFIC.doubleSpawnAfter && Math.random() < TRAFFIC.doubleSpawnChance) {
+    if (state.elapsed > TRAFFIC.doubleSpawnAfter) {
+      const chance =
+        TRAFFIC.doubleSpawnBaseChance +
+        (TRAFFIC.doubleSpawnMaxChance - TRAFFIC.doubleSpawnBaseChance) * difficulty;
+      if (Math.random() < chance) this.spawn();
+    }
+
+    if (
+      state.elapsed > TRAFFIC.tripleSpawnAfter &&
+      Math.random() < TRAFFIC.tripleSpawnMaxChance * difficulty
+    ) {
       this.spawn();
     }
   }
@@ -87,6 +100,13 @@ export class TrafficSystem implements GameSystem {
   private driveStep({ state, tuning, player, dt }: SystemContext): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const vehicle = this.active[i];
+
+      if (vehicle.userData.rammed) {
+        this.updateRammed(vehicle, dt);
+        if (vehicle.position.z > DESPAWN_Z + 12 || vehicle.position.y < -1) this.recycleAt(i);
+        continue;
+      }
+
       vehicle.position.z += (state.speed - vehicle.userData.speed) * dt;
 
       if (state.mode === 'run' && !state.crashed) {
@@ -102,6 +122,11 @@ export class TrafficSystem implements GameSystem {
           2;
 
         if (dz > -TRAFFIC.playerHalfLength && dz < TRAFFIC.playerHalfLength && dx < halfWidth) {
+          if (state.nitroRemaining > 0) {
+            this.launchFromNitro(vehicle, player.position.x, state);
+            continue;
+          }
+
           this.observer.onImpact();
           return;
         }
@@ -114,6 +139,42 @@ export class TrafficSystem implements GameSystem {
 
       if (vehicle.position.z > DESPAWN_Z) this.recycleAt(i);
     }
+  }
+
+  private launchFromNitro(
+    vehicle: VehicleObject,
+    playerX: number,
+    state: SystemContext['state'],
+  ): void {
+    const relative = vehicle.position.x - playerX;
+    const side = relative === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(relative);
+
+    vehicle.userData.rammed = true;
+    vehicle.userData.passed = true;
+    vehicle.userData.ramVelocityX =
+      side * randomRange(TRAFFIC.ramSideSpeedMin, TRAFFIC.ramSideSpeedMax);
+    vehicle.userData.ramVelocityY = randomRange(TRAFFIC.ramLiftMin, TRAFFIC.ramLiftMax);
+    vehicle.userData.ramVelocityZ = -randomRange(
+      TRAFFIC.ramForwardSpeedMin,
+      TRAFFIC.ramForwardSpeedMax,
+    );
+    vehicle.userData.ramSpin = side * randomRange(5.5, 9.5);
+    state.cameraShake = Math.max(state.cameraShake, 1.7);
+  }
+
+  private updateRammed(vehicle: VehicleObject, dt: number): void {
+    const vx = vehicle.userData.ramVelocityX ?? 0;
+    let vy = vehicle.userData.ramVelocityY ?? 0;
+    const vz = vehicle.userData.ramVelocityZ ?? -20;
+    const spin = vehicle.userData.ramSpin ?? 6;
+
+    vehicle.position.x += vx * dt;
+    vehicle.position.y += vy * dt;
+    vehicle.position.z += vz * dt;
+    vy -= 19 * dt;
+    vehicle.userData.ramVelocityY = vy;
+    vehicle.rotation.y += spin * dt;
+    vehicle.rotation.z += spin * 0.7 * dt;
   }
 
   private spawn(): VehicleObject {
@@ -129,8 +190,14 @@ export class TrafficSystem implements GameSystem {
     const lane = pickRandom(LANE_OFFSETS);
     const jitter = silhouette === 'truck' ? TRAFFIC.truckLaneJitter : TRAFFIC.laneJitter;
     vehicle.position.set(lane + randomRange(-jitter, jitter), 0, SPAWN_Z);
+    vehicle.rotation.set(0, 0, 0);
     vehicle.userData.speed = randomRange(TRAFFIC.minSpeed, TRAFFIC.maxSpeed);
     vehicle.userData.passed = false;
+    vehicle.userData.rammed = false;
+    vehicle.userData.ramVelocityX = 0;
+    vehicle.userData.ramVelocityY = 0;
+    vehicle.userData.ramVelocityZ = 0;
+    vehicle.userData.ramSpin = 0;
     this.active.push(vehicle);
     return vehicle;
   }
@@ -154,6 +221,9 @@ export class TrafficSystem implements GameSystem {
 
   private recycleAt(index: number): void {
     const [vehicle] = this.active.splice(index, 1);
+    vehicle.rotation.set(0, 0, 0);
+    vehicle.position.y = 0;
+    vehicle.userData.rammed = false;
     this.pool.release(vehicle);
   }
 
