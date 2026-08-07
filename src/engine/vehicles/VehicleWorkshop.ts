@@ -26,21 +26,21 @@ const TRAFFIC_COLORS = [
   '#EDEDED',
 ];
 
-const TRAFFIC_SILHOUETTES: readonly VehicleSilhouette[] = [
-  'sedan',
-  'hatch',
-  'suv',
-  'sedan',
-  'truck',
-];
-
 export function randomTrafficLivery(): Livery {
   const body = pickRandom(TRAFFIC_COLORS);
   return { body, roof: darken(body, 0.82) };
 }
 
+/**
+ * Weighted traffic mix. Trucks used to be 20% of every spawn which made the
+ * road feel like a delivery-van simulator and amplified their wide footprint.
+ */
 export function randomTrafficSilhouette(): VehicleSilhouette {
-  return pickRandom(TRAFFIC_SILHOUETTES);
+  const roll = Math.random();
+  if (roll < 0.08) return 'truck';
+  if (roll < 0.28) return 'suv';
+  if (roll < 0.46) return 'hatch';
+  return 'sedan';
 }
 
 export function darken(hex: string, factor: number): string {
@@ -52,8 +52,8 @@ const BLOB_SHADOW_NAME = 'blob-shadow';
 /**
  * One flat, unlit ellipse per vehicle, standing in for real shadow mapping.
  * Every vehicle shares this geometry and material, and the whole effect costs
- * a single extra draw call per car rather than an entire depth pass over the
- * scene — which is what makes the game viable on the expo-gl bridge.
+ * a single extra draw call per car rather than an entire depth pass over every
+ * object in the scene — which is what makes the game viable on the expo-gl bridge.
  */
 const blobShadowGeometry = new CircleGeometry(1, 10);
 const blobShadowMaterial = new MeshBasicMaterial({
@@ -73,14 +73,10 @@ function createBlobShadow(length: number, width: number): Mesh {
   return shadow;
 }
 
-/**
- * Owns vehicle construction and, crucially, the hot-swap from procedural
- * bodies to glTF ones. Systems ask for a vehicle and never learn which
- * provider produced it (Dependency Inversion), so the upgrade is invisible to
- * gameplay code.
- */
+/** Owns vehicle construction and the switch from procedural to glTF bodies. */
 export class VehicleWorkshop {
   private provider: VehicleBodyProvider = new ProceduralBodyProvider();
+  private preparedProvider: GltfBodyProvider | null = null;
   private readonly issued = new Set<VehicleObject>();
 
   get providerId(): string {
@@ -105,7 +101,7 @@ export class VehicleWorkshop {
     return vehicle;
   }
 
-  /** Re-paints an existing vehicle in place, e.g. after the player swaps cars. */
+  /** Re-paints/rebuilds an existing vehicle in place. */
   reskin(vehicle: VehicleObject, silhouette: VehicleSilhouette, livery: Livery, recolor: boolean): void {
     const { length, width } = this.provider.dimensions(silhouette);
     vehicle.userData.silhouette = silhouette;
@@ -117,20 +113,36 @@ export class VehicleWorkshop {
   }
 
   /**
-   * Loads the glTF pack and rebuilds every vehicle already on stage. Returns
-   * false when the pack is unavailable, in which case nothing changes and the
-   * procedural bodies keep rendering.
+   * Decode the glTF pack without touching live scene objects. Applying models
+   * during an active run caused a first-run render/state race on native builds.
    */
-  async upgradeToModels(playerVehicle: VehicleObject | null): Promise<boolean> {
+  async prepareModels(): Promise<boolean> {
+    if (this.provider.id === 'gltf' || this.preparedProvider) return true;
     const gltf = await GltfBodyProvider.load();
     if (!gltf) return false;
+    this.preparedProvider = gltf;
+    return true;
+  }
 
-    this.provider = gltf;
+  /** Apply an already-decoded pack synchronously between gameplay frames. */
+  activatePreparedModels(playerVehicle: VehicleObject | null): boolean {
+    if (this.provider.id === 'gltf') return true;
+    if (!this.preparedProvider) return false;
+
+    this.provider = this.preparedProvider;
+    this.preparedProvider = null;
+
     for (const vehicle of this.issued) {
       const { silhouette, livery } = vehicle.userData;
       this.reskin(vehicle, silhouette, livery, vehicle === playerVehicle);
     }
     return true;
+  }
+
+  /** Backwards-compatible helper for callers that explicitly want an immediate switch. */
+  async upgradeToModels(playerVehicle: VehicleObject | null): Promise<boolean> {
+    if (!(await this.prepareModels())) return false;
+    return this.activatePreparedModels(playerVehicle);
   }
 
   forget(vehicle: VehicleObject): void {
@@ -159,13 +171,7 @@ export class VehicleWorkshop {
   }
 }
 
-/**
- * Frees a discarded body's GPU buffers.
- *
- * Bodies that own their resources (the procedural ones) are disposed
- * wholesale. glTF bodies share geometry with a prototype and must not be —
- * only the per-vehicle material copies made for a custom livery are released.
- */
+/** Frees a discarded body's GPU buffers without disposing shared glTF data. */
 function releaseGpuResources(root: Object3D): void {
   const owned = root.userData.ownsGpuResources === true;
 
