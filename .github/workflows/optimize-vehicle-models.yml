@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -40,7 +42,6 @@ jobs:
           if-no-files-found: error
 
       - name: Commit optimized models
-        if: github.event_name != 'pull_request'
         run: |
           if git diff --quiet -- assets/game-models; then
             echo 'No model changes.'
