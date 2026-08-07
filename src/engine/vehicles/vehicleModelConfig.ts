@@ -1,13 +1,14 @@
 import type { VehicleSilhouette } from '@/domain/cars';
 
 /**
- * MODEL TEST SWITCHBOARD
+ * SINGLE-MODEL PERFORMANCE TEST
  *
  * Raw source GLBs live in assets/new-models. The game loads the optimized
- * assets/game-models versions produced by scripts/optimize-vehicle-models.mjs.
- * Every active model is used together in traffic.
+ * assets/game-models version produced by scripts/optimize-vehicle-models.mjs.
+ * For this test, player + every traffic vehicle use the same ~30k blue car so
+ * all runtime copies share one loaded prototype, geometry set and material set.
  */
-export type VehicleModelId = 'azureVelocity' | 'blueBubble' | 'redBubble';
+export type VehicleModelId = 'blueCompressed';
 export type VehicleForwardAxis = '+x' | '-x' | '+z' | '-z';
 
 export interface VehicleModelSpec {
@@ -19,45 +20,31 @@ export interface VehicleModelSpec {
 }
 
 export const MODEL_LIBRARY: Record<VehicleModelId, VehicleModelSpec> = {
-  azureVelocity: {
-    module: require('../../../assets/game-models/Meshy_AI_Azure_Velocity_0807150759_texture.glb'),
-    targetLength: 5.2,
-    forwardAxis: '-x',
-  },
-  blueBubble: {
-    module: require('../../../assets/game-models/Meshy_AI_Blue_Bubble_Car_0807145213_texture.glb'),
-    targetLength: 4.9,
-    forwardAxis: '-x',
-  },
-  redBubble: {
-    module: require('../../../assets/game-models/blue_bubble_car_red.glb'),
+  blueCompressed: {
+    module: require('../../../assets/game-models/Meshy_AI_Blue_Bubble_Car_0807173120_texture.glb'),
     targetLength: 4.9,
     forwardAxis: '-x',
   },
 };
 
-/** Every id here appears together in traffic. */
-export const ACTIVE_MODEL_POOL: readonly VehicleModelId[] = [
-  'azureVelocity',
-  'blueBubble',
-  'redBubble',
-];
+/** Every traffic spawn resolves to the same compressed blue model. */
+export const ACTIVE_MODEL_POOL: readonly VehicleModelId[] = ['blueCompressed'];
 
-/** Player car for this temporary model-testing setup. */
-export const PLAYER_MODEL_ID: VehicleModelId = 'azureVelocity';
+/** Player uses the exact same model/prototype as traffic for this test. */
+export const PLAYER_MODEL_ID: VehicleModelId = 'blueCompressed';
 
-/** Optimized GLBs already contain their authored appearance as vertex colours. */
+/** Optimized GLB contains its authored appearance as baked vertex colours. */
 export const PRESERVE_AUTHORED_MODEL_COLORS = true;
 
-export function activeModelIdAt(index: number): VehicleModelId {
-  return ACTIVE_MODEL_POOL[index % ACTIVE_MODEL_POOL.length] ?? PLAYER_MODEL_ID;
+export function activeModelIdAt(_index: number): VehicleModelId {
+  return PLAYER_MODEL_ID;
 }
 
 export function modelSpec(modelId: VehicleModelId): VehicleModelSpec {
   return MODEL_LIBRARY[modelId];
 }
 
-/** Procedural fallback still asks by silhouette; give it a sensible test size. */
+/** Procedural fallback still asks by silhouette; use the same test model size. */
 export function fallbackModelSpec(_silhouette: VehicleSilhouette): VehicleModelSpec {
   return MODEL_LIBRARY[PLAYER_MODEL_ID];
 }
