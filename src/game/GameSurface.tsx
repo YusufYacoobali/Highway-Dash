@@ -30,11 +30,7 @@ export interface GameSurfaceProps {
   handleRef?: React.RefObject<GameSurfaceHandle | null>;
 }
 
-/**
- * Hosts the WebGL context and owns the render loop. All gameplay lives in
- * {@link GameEngine}; this component is purely the React ↔ GL boundary, which
- * is why it survives every screen transition without remounting.
- */
+/** Hosts the WebGL context and owns the render loop. */
 export const GameSurface: React.FC<GameSurfaceProps> = ({
   mode,
   car,
@@ -54,20 +50,16 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
-  // Native GL context creation is asynchronous. Keep the latest gameplay
-  // props available so a context that finishes after the user taps Play is
-  // created directly in the correct mode instead of falling back to attract.
+  // Native GL creation and glTF decoding are asynchronous. Always keep the
+  // latest gameplay props available so late native work cannot restore stale
+  // menu/run state.
   const latest = useRef({ mode, car, tuning, runToken });
   latest.current = { mode, car, tuning, runToken };
 
-  // Callbacks are read through a ref so the GL context is never re-created
-  // when a parent re-renders with new closures.
   const callbacks = useRef({ onTelemetry, onNearMiss, onStarGained, onCrash });
   callbacks.current = { onTelemetry, onNearMiss, onStarGained, onCrash };
 
   const handleContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
-    // A second context would leave the previous loop rendering into a dead
-    // surface while its engine kept simulating. Tear the old one down first.
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     engineRef.current?.dispose();
     rendererRef.current?.dispose();
@@ -82,9 +74,6 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
       tuning: current.tuning,
     });
     engineRef.current = engine;
-
-    // The mode effect may already have fired before the native GL context was
-    // ready. Reconcile immediately so Play cannot leave the engine in attract.
     engine.setMode(current.mode);
 
     engine.events.on('telemetry', (snapshot) => callbacks.current.onTelemetry(snapshot));
@@ -101,7 +90,6 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
       const dt = (now - last) / 1000;
       last = now;
 
-      // A covered scene keeps its context alive but burns no GPU time.
       if (pausedRef.current) return;
 
       try {
@@ -117,9 +105,13 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     };
     loop();
 
-    // Upgrade from procedural bodies to the bundled glTF vehicle pack after
-    // the first frames are already on screen.
-    void engine.loadHighDetailModels();
+    // Decode glTF asynchronously, but never hot-swap scene objects in the
+    // middle of an active run. If decoding finishes on the menu we can apply
+    // immediately; otherwise the next mode/run reset applies it synchronously.
+    void engine.prepareHighDetailModels().then((ready) => {
+      if (!ready || engineRef.current !== engine) return;
+      if (latest.current.mode === 'attract') engine.activateHighDetailModels();
+    });
   }, []);
 
   useEffect(
@@ -142,9 +134,13 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   }, [car]);
 
   useEffect(() => {
-    engineRef.current?.setMode(mode);
-    // `runToken` is intentionally a dependency: replaying from the crash screen
-    // keeps the same mode but must restart the simulation.
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    engine.setMode(mode);
+    // If glTF decoding completed during the previous run, apply it now while
+    // all systems have just reset and before the next animation frame.
+    engine.activateHighDetailModels();
   }, [mode, runToken]);
 
   useEffect(() => {
