@@ -5,11 +5,19 @@ import { findCar, type CarDefinition } from '@/domain/cars';
 import { describeCrateReward, type ShopBundle } from '@/domain/economy';
 import type { RunResult } from '@/domain/runResult';
 import { totalUpgradeLevel, type UpgradeId } from '@/domain/upgrades';
+import type { EngineEvents, Telemetry } from '@/engine/types';
 import { CrashScreen } from '@/features/crash/CrashScreen';
 import { GarageScreen } from '@/features/garage/GarageScreen';
 import { MenuScreen } from '@/features/menu/MenuScreen';
 import { MissionsScreen } from '@/features/missions/MissionsScreen';
-import { pushNearMissPop, usePopStore } from '@/features/run/popStore';
+import {
+  pushEventPop,
+  pushNearMissPop,
+  pushNewBestPop,
+  pushRamPop,
+  pushWantedPop,
+  usePopStore,
+} from '@/features/run/popStore';
 import { RunHud } from '@/features/run/RunHud';
 import { SeasonScreen } from '@/features/season/SeasonScreen';
 import { ShopScreen } from '@/features/shop/ShopScreen';
@@ -27,20 +35,16 @@ import { useRunStore } from '@/state/runStore';
 import { palette } from '@/ui/theme';
 import { playerSnapshot } from './playerSnapshot';
 
-/**
- * Wires the persistent 3D surface to the screen overlays and to the profile
- * store. This is the only module that knows about both halves of the app,
- * which keeps every screen and every engine system independently testable.
- */
+/** Persistent 3D surface + React overlay composition root. */
 export const GameStage: React.FC = () => {
   const { feedback, engagement } = useServices();
   const surface = useRef<GameSurfaceHandle | null>(null);
+  const runBestTarget = useRef(0);
+  const announcedBest = useRef(false);
 
   const screen = useNavigationStore((s) => s.screen);
   const navigate = useNavigationStore((s) => s.navigate);
 
-  // Selected via primitives, then derived — a selector that built these objects
-  // inline would allocate on every store read and break snapshot caching.
   const selectedCarId = useProfileStore((s) => s.selectedCarId);
   const upgrades = useProfileStore((s) => s.upgrades);
   const car = useMemo(() => findCar(selectedCarId), [selectedCarId]);
@@ -55,6 +59,8 @@ export const GameStage: React.FC = () => {
 
   const startRun = useCallback(() => {
     feedback.play('tap');
+    runBestTarget.current = useProfileStore.getState().bestDistance;
+    announcedBest.current = false;
     resetTelemetry();
     clearPops();
     beginRun();
@@ -69,7 +75,6 @@ export const GameStage: React.FC = () => {
     [feedback, navigate],
   );
 
-  /** Banks a finished run and reports it to the engagement services. */
   const bankRun = useCallback(
     (result: RunResult) => {
       const summary = useProfileStore.getState().completeRun(result);
@@ -94,7 +99,6 @@ export const GameStage: React.FC = () => {
     [bankRun, feedback, navigate],
   );
 
-  /** Quitting mid-run still banks the distance, as every runner does. */
   const handleQuitRun = useCallback(() => {
     feedback.play('tap');
     const result = surface.current?.retireRun();
@@ -102,18 +106,58 @@ export const GameStage: React.FC = () => {
     navigate('menu');
   }, [bankRun, feedback, navigate]);
 
+  const handleTelemetry = useCallback(
+    (snapshot: Telemetry) => {
+      applyTelemetry(snapshot);
+      if (
+        !announcedBest.current &&
+        runBestTarget.current > 0 &&
+        snapshot.distance > runBestTarget.current
+      ) {
+        announcedBest.current = true;
+        feedback.play('reward');
+        pushNewBestPop();
+      }
+    },
+    [applyTelemetry, feedback],
+  );
+
   const handleNearMiss = useCallback(
-    ({ combo, stars }: { combo: number; stars: number }) => {
+    ({ combo, stars }: EngineEvents['nearMiss']) => {
       feedback.play('nearMiss');
       pushNearMissPop(combo, stars);
     },
     [feedback],
   );
 
-  const handleStarGained = useCallback(() => feedback.play('star'), [feedback]);
+  const handleStarGained = useCallback(
+    ({ stars }: EngineEvents['starGained']) => {
+      feedback.play('star');
+      pushWantedPop(stars);
+    },
+    [feedback],
+  );
+
+  const handleCoinCollected = useCallback(() => feedback.play('coin'), [feedback]);
+
+  const handleTrafficRammed = useCallback(
+    ({ combo }: EngineEvents['trafficRammed']) => {
+      feedback.play('ram');
+      pushRamPop(combo);
+    },
+    [feedback],
+  );
+
+  const handleEventStarted = useCallback(
+    ({ event }: EngineEvents['eventStarted']) => {
+      if (event !== 'cruise') feedback.play('event');
+      pushEventPop(event);
+    },
+    [feedback],
+  );
 
   const handleNitro = useCallback(() => {
-    if (surface.current?.fireNitro()) feedback.play('tap');
+    if (surface.current?.fireNitro()) feedback.play('nearMiss');
   }, [feedback]);
 
   return (
@@ -124,9 +168,12 @@ export const GameStage: React.FC = () => {
         tuning={tuning}
         runToken={runToken}
         paused={!isSceneScreen(screen)}
-        onTelemetry={applyTelemetry}
+        onTelemetry={handleTelemetry}
         onNearMiss={handleNearMiss}
         onStarGained={handleStarGained}
+        onCoinCollected={handleCoinCollected}
+        onTrafficRammed={handleTrafficRammed}
+        onEventStarted={handleEventStarted}
         onCrash={handleCrash}
         handleRef={surface}
       />
@@ -150,10 +197,6 @@ interface ScreenOverlayProps {
   onQuitRun(): void;
 }
 
-/**
- * Maps the current screen token to a screen component and supplies it with the
- * profile data and callbacks it needs. Screens themselves stay presentational.
- */
 const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
   screen,
   onPlay,
@@ -196,8 +239,6 @@ const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
 
   const handleBuyBundle = useCallback(
     async (bundle: ShopBundle) => {
-      // The shop remains implemented but is intentionally not exposed from the
-      // home screen while the core gameplay loop is being tuned.
       if (bundle.costsGems === undefined) {
         const outcome = await commerce.purchase(bundle);
         if (outcome !== 'purchased') {
