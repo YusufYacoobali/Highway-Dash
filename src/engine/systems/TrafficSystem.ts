@@ -11,9 +11,7 @@ import {
 } from '@/engine/vehicles/VehicleWorkshop';
 
 export interface TrafficObserver {
-  /** The player squeezed past a car without touching it. */
   onNearMiss(): void;
-  /** The player hit a car without nitro. */
   onImpact(): void;
 }
 
@@ -23,7 +21,7 @@ export class TrafficSystem implements GameSystem {
 
   private readonly active: VehicleObject[] = [];
   private readonly pool: ObjectPool<VehicleObject>;
-  private spawnTimer = 1;
+  private spawnTimer = 0.8;
 
   constructor(
     private readonly scene: Scene,
@@ -56,7 +54,7 @@ export class TrafficSystem implements GameSystem {
 
   reset(ctx: Omit<SystemContext, 'dt' | 'scroll'>): void {
     this.recycleAll();
-    this.spawnTimer = ctx.state.mode === 'run' ? 1.6 : 0.8;
+    this.spawnTimer = ctx.state.mode === 'run' ? 0.75 : 0.7;
     this.prefill(ctx.state.mode === 'run');
   }
 
@@ -74,10 +72,10 @@ export class TrafficSystem implements GameSystem {
       return;
     }
 
-    // Ease the ramp so the opening remains generous but the final third gets
-    // much denser instead of staying at the same comfortable cadence.
+    // Sub-linear easing means the difficulty is already noticeably moving by
+    // 10–15 seconds instead of waiting until the back half of the run.
     const linear = Math.min(1, state.elapsed / TRAFFIC.difficultyRampSeconds);
-    const difficulty = linear * linear;
+    const difficulty = Math.pow(linear, 0.72);
     this.spawnTimer =
       TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * difficulty;
     this.spawn();
@@ -158,8 +156,8 @@ export class TrafficSystem implements GameSystem {
       TRAFFIC.ramForwardSpeedMin,
       TRAFFIC.ramForwardSpeedMax,
     );
-    vehicle.userData.ramSpin = side * randomRange(5.5, 9.5);
-    state.cameraShake = Math.max(state.cameraShake, 1.7);
+    vehicle.userData.ramSpin = side * randomRange(6.5, 11);
+    state.cameraShake = Math.max(state.cameraShake, 2.1);
   }
 
   private updateRammed(vehicle: VehicleObject, dt: number): void {
@@ -180,8 +178,6 @@ export class TrafficSystem implements GameSystem {
   private spawn(): VehicleObject {
     const vehicle = this.pool.acquire();
 
-    // Re-roll the pooled car type on every spawn so a single truck in the pool
-    // cannot become every fifth vehicle forever.
     const silhouette = randomTrafficSilhouette();
     if (vehicle.userData.silhouette !== silhouette) {
       this.workshop.reskin(vehicle, silhouette, randomTrafficLivery(), false);
@@ -202,18 +198,18 @@ export class TrafficSystem implements GameSystem {
     return vehicle;
   }
 
-  /** Seeds a small amount of readable traffic without front-loading difficulty. */
   private prefill(isRun: boolean): void {
     const count = isRun ? TRAFFIC.runPrefillCount : TRAFFIC.attractPrefillCount;
-    const start = isRun ? -118 : -18;
-    const gap = isRun ? 34 : 22;
+    const start = isRun ? -102 : -18;
+    const gap = isRun ? 27 : 20;
 
     for (let i = 0; i < count; i++) {
       const vehicle = this.spawn();
-      vehicle.position.z = start - i * gap - randomRange(0, isRun ? 8 : 5);
+      vehicle.position.z = start - i * gap - randomRange(0, isRun ? 7 : 5);
 
-      // Give the first few seconds a clear central escape route.
-      if (isRun && i < 3 && Math.abs(vehicle.position.x) < 2.6) {
+      // Only the first beat is deliberately generous; after that the player is
+      // immediately reading and reacting to traffic.
+      if (isRun && i < 2 && Math.abs(vehicle.position.x) < 2.6) {
         vehicle.position.x = vehicle.position.x < 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
       }
     }
