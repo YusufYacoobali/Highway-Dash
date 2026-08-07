@@ -2,19 +2,19 @@ import type { Scene } from 'three';
 
 import { ObjectPool } from '@/core/ObjectPool';
 import { pickRandom, randomRange } from '@/core/math';
+import type { VehicleSilhouette } from '@/domain/cars';
 import { DESPAWN_Z, LANE_OFFSETS, SPAWN_Z, TRAFFIC } from '@/engine/config';
 import type { GameSystem, SystemContext, VehicleObject } from '@/engine/types';
-import {
-  randomTrafficLivery,
-  randomTrafficSilhouette,
-  VehicleWorkshop,
-} from '@/engine/vehicles/VehicleWorkshop';
+import { randomTrafficLivery, VehicleWorkshop } from '@/engine/vehicles/VehicleWorkshop';
 import { activeModelIdAt } from '@/engine/vehicles/vehicleModelConfig';
 
 export interface TrafficObserver {
   onNearMiss(): void;
   onImpact(): void;
 }
+
+/** Single-model performance test: every traffic car uses the same body shape. */
+const TEST_TRAFFIC_SILHOUETTE: VehicleSilhouette = 'hatch';
 
 /** Spawns, drives and recycles traffic and owns traffic collision geometry. */
 export class TrafficSystem implements GameSystem {
@@ -23,7 +23,6 @@ export class TrafficSystem implements GameSystem {
   private readonly active: VehicleObject[] = [];
   private readonly pool: ObjectPool<VehicleObject>;
   private spawnTimer = 0.8;
-  /** Cycles the test pool so every active GLB is guaranteed to appear. */
   private modelCursor = 0;
 
   constructor(
@@ -34,7 +33,7 @@ export class TrafficSystem implements GameSystem {
     this.pool = new ObjectPool<VehicleObject>(
       () => {
         const vehicle = this.workshop.create({
-          silhouette: randomTrafficSilhouette(),
+          silhouette: TEST_TRAFFIC_SILHOUETTE,
           livery: randomTrafficLivery(),
           modelId: activeModelIdAt(this.modelCursor++),
           recolor: false,
@@ -73,8 +72,6 @@ export class TrafficSystem implements GameSystem {
 
     const maxActive = state.mode === 'run' ? TRAFFIC.maxActiveRun : TRAFFIC.maxActiveAttract;
     if (this.active.length >= maxActive) {
-      // Keep checking frequently so the pacing resumes as soon as a car exits,
-      // but don't let expensive Meshy clones pile up offscreen.
       this.spawnTimer = state.mode === 'run' ? TRAFFIC.minInterval : TRAFFIC.attractInterval;
       return;
     }
@@ -190,15 +187,10 @@ export class TrafficSystem implements GameSystem {
   private spawn(): VehicleObject {
     const vehicle = this.pool.acquire();
 
-    const silhouette = randomTrafficSilhouette();
-    const modelId = activeModelIdAt(this.modelCursor++);
-    if (vehicle.userData.silhouette !== silhouette || vehicle.userData.modelId !== modelId) {
-      this.workshop.reskin(vehicle, silhouette, randomTrafficLivery(), false, modelId);
-    }
-
+    // All pooled cars already contain the same compressed blue GLB. No body
+    // reskin/reclone work is needed when they are recycled back into traffic.
     const lane = pickRandom(LANE_OFFSETS);
-    const jitter = silhouette === 'truck' ? TRAFFIC.truckLaneJitter : TRAFFIC.laneJitter;
-    vehicle.position.set(lane + randomRange(-jitter, jitter), 0, SPAWN_Z);
+    vehicle.position.set(lane + randomRange(-TRAFFIC.laneJitter, TRAFFIC.laneJitter), 0, SPAWN_Z);
     vehicle.rotation.set(0, 0, 0);
     vehicle.userData.speed = randomRange(TRAFFIC.minSpeed, TRAFFIC.maxSpeed);
     vehicle.userData.passed = false;
