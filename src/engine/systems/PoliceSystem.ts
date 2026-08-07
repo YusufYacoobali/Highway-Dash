@@ -50,7 +50,7 @@ export class PoliceSystem implements GameSystem {
     }
   }
 
-  update({ state, player, dt }: SystemContext): void {
+  update({ state, dt }: SystemContext): void {
     this.flashClock += dt;
     const chaseActive = state.mode === 'run' && !state.crashed && (state.stars >= 2 || state.event === 'police');
     const desired = !chaseActive ? 0 : state.stars >= 4 ? 2 : 1;
@@ -75,7 +75,6 @@ export class PoliceSystem implements GameSystem {
       rig.vehicle.position.y = 0;
       rig.vehicle.rotation.y = -weave * 0.05;
 
-      // Sirens add controlled urgency without making the road itself unfair.
       if (pressure > 0.65) state.cameraShake = Math.max(state.cameraShake, 0.16 + pressure * 0.1);
     });
   }
