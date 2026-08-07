@@ -52,9 +52,17 @@ export function pushNearMissPop(combo: number, _stars: number): void {
   usePopStore.getState().push(text, color, size);
 }
 
-export function pushRamPop(combo: number): void {
+export function pushRamPop(smashCount: number, grace: boolean): void {
   const { push } = usePopStore.getState();
-  push(combo >= 10 ? 'DELETED! +COMBO' : 'WRECKED!', palette.redHot, combo >= 10 ? 36 : 32);
+  if (grace) {
+    push('SAVED BY SHIELD!', palette.greenSoft, 30);
+    return;
+  }
+
+  if (smashCount >= 7) push(`MASS DELETION x${smashCount}!`, palette.redHot, 40);
+  else if (smashCount >= 4) push(`YEET CHAIN x${smashCount}!`, palette.redHot, 37);
+  else if (smashCount >= 2) push(`SMASH x${smashCount}!`, palette.cyanIce, 34);
+  else push('GET OUT THE WAY!', palette.cyanIce, 32);
 }
 
 export function pushWantedPop(stars: number): void {
@@ -76,6 +84,7 @@ export function pushEventPop(event: RunEventId): void {
     nitroRush: { text: 'NITRO FRENZY!', color: palette.cyanIce, size: 36 },
     police: { text: 'COPS ON YOU!', color: palette.redHot, size: 36 },
     roadblock: { text: 'ROADBLOCK!', color: palette.redHot, size: 38 },
+    laneSqueeze: { text: 'ROAD NARROWS — 3 LANES!', color: palette.orange, size: 34 },
   };
   const item = callout[event];
   push(item.text, item.color, item.size);
