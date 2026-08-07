@@ -3,9 +3,9 @@ import type { VehicleSilhouette } from '@/domain/cars';
 /**
  * MODEL TEST SWITCHBOARD
  *
- * Add each candidate GLB once to MODEL_LIBRARY, then include its id in
- * ACTIVE_MODEL_POOL. Traffic cycles through every id in the pool so all test
- * models are guaranteed to appear during the same run.
+ * Raw source GLBs live in assets/new-models. The game loads the optimized
+ * assets/game-models versions produced by scripts/optimize-vehicle-models.mjs.
+ * Every active model is used together in traffic.
  */
 export type VehicleModelId = 'azureVelocity' | 'blueBubble' | 'redBubble';
 export type VehicleForwardAxis = '+x' | '-x' | '+z' | '-z';
@@ -20,26 +20,23 @@ export interface VehicleModelSpec {
 
 export const MODEL_LIBRARY: Record<VehicleModelId, VehicleModelSpec> = {
   azureVelocity: {
-    module: require('../../../assets/new-models/Meshy_AI_Azure_Velocity_0807150759_texture.glb'),
+    module: require('../../../assets/game-models/Meshy_AI_Azure_Velocity_0807150759_texture.glb'),
     targetLength: 5.2,
     forwardAxis: '-x',
   },
   blueBubble: {
-    module: require('../../../assets/new-models/Meshy_AI_Blue_Bubble_Car_0807145213_texture.glb'),
+    module: require('../../../assets/game-models/Meshy_AI_Blue_Bubble_Car_0807145213_texture.glb'),
     targetLength: 4.9,
     forwardAxis: '-x',
   },
   redBubble: {
-    module: require('../../../assets/new-models/blue_bubble_car_red.glb'),
+    module: require('../../../assets/game-models/blue_bubble_car_red.glb'),
     targetLength: 4.9,
     forwardAxis: '-x',
   },
 };
 
-/**
- * Main test switch: every id here appears together in traffic.
- * When you add more GLBs later, register them above and add their ids here.
- */
+/** Every id here appears together in traffic. */
 export const ACTIVE_MODEL_POOL: readonly VehicleModelId[] = [
   'azureVelocity',
   'blueBubble',
@@ -49,7 +46,7 @@ export const ACTIVE_MODEL_POOL: readonly VehicleModelId[] = [
 /** Player car for this temporary model-testing setup. */
 export const PLAYER_MODEL_ID: VehicleModelId = 'azureVelocity';
 
-/** Keep the authored Meshy materials and baked textures while evaluating them. */
+/** Optimized GLBs already contain their authored appearance as vertex colours. */
 export const PRESERVE_AUTHORED_MODEL_COLORS = true;
 
 export function activeModelIdAt(index: number): VehicleModelId {
