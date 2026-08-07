@@ -24,7 +24,6 @@ import { CrashSequence } from './systems/CrashSequence';
 import { HeatSystem } from './systems/HeatSystem';
 import { PickupSystem } from './systems/PickupSystem';
 import { PlayerSystem } from './systems/PlayerSystem';
-import { PoliceSystem } from './systems/PoliceSystem';
 import { ScoreSystem } from './systems/ScoreSystem';
 import { TrafficSystem } from './systems/TrafficSystem';
 import { WorldScrollSystem } from './systems/WorldScrollSystem';
@@ -43,15 +42,15 @@ import { buildScenery } from './world/SceneryBuilder';
 import { buildSky } from './world/SkyBuilder';
 
 const MAX_FRAME_DELTA = 0.05;
-const SPEED_RESPONSE = 3.2;
-/** Speed the car holds before the player first touches the screen. */
-const IDLE_RUN_SPEED = 44;
+const SPEED_RESPONSE = 4.4;
+/** The run already feels fast before the player makes the first move. */
+const IDLE_RUN_SPEED = 56;
 
 function createRunState(mode: EngineMode): RunState {
   return {
     mode,
     elapsed: 0,
-    speed: mode === 'run' ? 30 : ATTRACT_SPEED,
+    speed: mode === 'run' ? 48 : ATTRACT_SPEED,
     steerTarget: 0,
     x: 0,
     distance: 0,
@@ -65,7 +64,7 @@ function createRunState(mode: EngineMode): RunState {
     wantedPeak: 0,
     secondsSinceNearMiss: 0,
     secondsAtMaxStars: 0,
-    topSpeedKmh: 90,
+    topSpeedKmh: 120,
     nitroRemaining: 0,
     nitroCooldown: 0,
     started: false,
@@ -141,28 +140,22 @@ export class GameEngine {
       }),
       this.scoreSystem,
       this.heatSystem,
-      new PoliceSystem(this.scene, this.workshop),
       new CameraSystem(this.camera),
     ];
 
     this.resetSystems();
   }
 
-  /* ----------------------------- public API ----------------------------- */
-
-  /** Decode the glTF pack without mutating live scene objects. */
   async prepareHighDetailModels(): Promise<boolean> {
     if (this.disposed) return false;
     return this.workshop.prepareModels();
   }
 
-  /** Apply an already-decoded glTF pack synchronously between gameplay frames. */
   activateHighDetailModels(): boolean {
     if (this.disposed) return false;
     return this.workshop.activatePreparedModels(this.player);
   }
 
-  /** Legacy immediate helper retained for compatibility. */
   async loadHighDetailModels(): Promise<boolean> {
     if (this.disposed) return false;
     return this.workshop.upgradeToModels(this.player);
@@ -188,7 +181,6 @@ export class GameEngine {
     );
   }
 
-  /** `fraction` is the touch position across the viewport, 0 (left) → 1 (right). */
   steerTo(fraction: number): void {
     if (this.state.mode !== 'run' || this.state.crashed) return;
     this.state.started = true;
@@ -203,11 +195,11 @@ export class GameEngine {
     state.nitroRemaining = this.tuning.nitroSeconds;
     state.nitroCooldown = this.tuning.nitroSeconds + NITRO.cooldownSeconds;
     state.started = true;
+    state.cameraShake = Math.max(state.cameraShake, 0.7);
     this.events.emit('nitroFired', {});
     return true;
   }
 
-  /** Ends the current run early and banks it. */
   retire(): RunResult | null {
     if (this.state.mode !== 'run' || this.state.crashed) return null;
 
@@ -250,8 +242,6 @@ export class GameEngine {
     this.scene.clear();
   }
 
-  /* ------------------------------ internals ----------------------------- */
-
   private addLights(): void {
     this.scene.add(new HemisphereLight(0xeaf6ff, 0x4e7a3a, 0.95));
 
@@ -276,7 +266,7 @@ export class GameEngine {
       return;
     }
 
-    const rampProgress = Math.min(1, state.elapsed / Math.max(20, tuning.rampSeconds));
+    const rampProgress = Math.min(1, state.elapsed / Math.max(16, tuning.rampSeconds));
     const cruise = tuning.baseSpeed + rampProgress * tuning.speedGain;
     const target = state.nitroRemaining > 0 ? cruise * tuning.nitroMultiplier : cruise;
 
@@ -298,10 +288,6 @@ export class GameEngine {
   private updateCrash(dt: number): void {
     const slow = this.crashSequence.slowFactor;
     const shouldReport = this.crashSequence.update(this.state, this.player, dt);
-
-    // World/traffic/pickups can continue drifting in slow motion. PlayerSystem
-    // and CameraSystem explicitly stand down while crashed so they do not
-    // overwrite the tumble and cinematic camera from CrashSequence.
     this.runSystems(dt * slow, this.state.speed * dt * slow);
 
     if (shouldReport) this.events.emit('crashed', this.buildResult());
