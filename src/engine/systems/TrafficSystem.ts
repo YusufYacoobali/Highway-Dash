@@ -3,7 +3,7 @@ import type { Scene } from 'three';
 import { ObjectPool } from '@/core/ObjectPool';
 import { clamp, randomRange } from '@/core/math';
 import type { VehicleSilhouette } from '@/domain/cars';
-import { DESPAWN_Z, LANE_OFFSETS, SPAWN_Z, TRAFFIC } from '@/engine/config';
+import { DESPAWN_Z, HEAT, LANE_OFFSETS, SPAWN_Z, TRAFFIC } from '@/engine/config';
 import type { GameSystem, SystemContext, VehicleObject } from '@/engine/types';
 import { randomTrafficLivery, VehicleWorkshop } from '@/engine/vehicles/VehicleWorkshop';
 import { activeModelIdAt } from '@/engine/vehicles/vehicleModelConfig';
@@ -30,6 +30,7 @@ export class TrafficSystem implements GameSystem {
   private modelCursor = 0;
   private lastEventSerial = -1;
   private setPieceDelay = -1;
+  private highHeatRoadblockReady = true;
 
   constructor(
     private readonly scene: Scene,
@@ -66,6 +67,7 @@ export class TrafficSystem implements GameSystem {
     this.modelCursor = 0;
     this.lastEventSerial = ctx.state.eventSerial;
     this.setPieceDelay = -1;
+    this.highHeatRoadblockReady = true;
     this.spawnTimer = ctx.state.mode === 'run' ? 1.05 : 0.7;
     this.prefill(ctx.state.mode === 'run');
   }
@@ -76,6 +78,19 @@ export class TrafficSystem implements GameSystem {
 
   private spawnStep({ state, dt }: SystemContext): void {
     const maxActive = state.mode === 'run' ? TRAFFIC.maxActiveRun : TRAFFIC.maxActiveAttract;
+
+    if (state.mode === 'run' && state.stars < HEAT.roadblocksAt) {
+      this.highHeatRoadblockReady = true;
+    }
+    if (
+      state.mode === 'run' &&
+      state.stars >= HEAT.roadblocksAt &&
+      this.highHeatRoadblockReady &&
+      this.active.length <= maxActive - 3
+    ) {
+      this.spawnRoadblock(maxActive);
+      this.highHeatRoadblockReady = false;
+    }
 
     if (state.mode === 'run' && state.eventSerial !== this.lastEventSerial) {
       this.lastEventSerial = state.eventSerial;
@@ -288,7 +303,6 @@ export class TrafficSystem implements GameSystem {
       const vehicle = this.spawn(i % LANE_OFFSETS.length);
       vehicle.position.z = start - i * gap - randomRange(0, isRun ? 8 : 5);
 
-      // First two reads are deliberately wide, giving a new run a clear centre corridor.
       if (isRun && i < 2) vehicle.position.x = i === 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
     }
   }
