@@ -164,3 +164,5 @@ function countTriangles(document) {
   }
   return triangles;
 }
+
+// PR trigger used to run the optimizer against repository-hosted binary GLBs.
