@@ -17,17 +17,13 @@ export interface TrafficObserver {
   onImpact(): void;
 }
 
-/**
- * Spawns, drives and recycles the oncoming traffic, and reports the two events
- * that matter to gameplay. Scoring rules deliberately live elsewhere — this
- * system only knows about geometry.
- */
+/** Spawns, drives and recycles traffic and owns traffic collision geometry. */
 export class TrafficSystem implements GameSystem {
   readonly name = 'traffic';
 
   private readonly active: VehicleObject[] = [];
   private readonly pool: ObjectPool<VehicleObject>;
-  private spawnTimer = 0.4;
+  private spawnTimer = 1;
 
   constructor(
     private readonly scene: Scene,
@@ -60,11 +56,10 @@ export class TrafficSystem implements GameSystem {
 
   reset(ctx: Omit<SystemContext, 'dt' | 'scroll'>): void {
     this.recycleAll();
-    this.spawnTimer = 0.4;
+    this.spawnTimer = ctx.state.mode === 'run' ? 1.6 : 0.8;
     this.prefill(ctx.state.mode === 'run');
   }
 
-  /** Number of cars currently on stage — used by tests and the debug overlay. */
   get activeCount(): number {
     return this.active.length;
   }
@@ -74,13 +69,14 @@ export class TrafficSystem implements GameSystem {
     if (this.spawnTimer > 0) return;
 
     if (state.mode === 'attract') {
-      // The attract loop uses a fixed cadence so the menu never gets crowded.
       this.spawnTimer = TRAFFIC.attractInterval;
       this.spawn();
       return;
     }
 
-    this.spawnTimer = Math.max(TRAFFIC.minInterval, TRAFFIC.baseInterval - state.speed / 190);
+    const progress = Math.min(1, state.elapsed / TRAFFIC.difficultyRampSeconds);
+    this.spawnTimer =
+      TRAFFIC.baseInterval + (TRAFFIC.minInterval - TRAFFIC.baseInterval) * progress;
     this.spawn();
 
     if (state.elapsed > TRAFFIC.doubleSpawnAfter && Math.random() < TRAFFIC.doubleSpawnChance) {
@@ -96,7 +92,14 @@ export class TrafficSystem implements GameSystem {
       if (state.mode === 'run' && !state.crashed) {
         const dx = Math.abs(vehicle.position.x - player.position.x);
         const dz = vehicle.position.z - player.position.z;
-        const halfWidth = (vehicle.userData.width + player.userData.width) / 2;
+        const vehicleWidthScale =
+          vehicle.userData.silhouette === 'truck'
+            ? TRAFFIC.truckCollisionWidthScale
+            : TRAFFIC.collisionWidthScale;
+        const halfWidth =
+          (vehicle.userData.width * vehicleWidthScale +
+            player.userData.width * TRAFFIC.collisionWidthScale) /
+          2;
 
         if (dz > -TRAFFIC.playerHalfLength && dz < TRAFFIC.playerHalfLength && dx < halfWidth) {
           this.observer.onImpact();
@@ -115,26 +118,35 @@ export class TrafficSystem implements GameSystem {
 
   private spawn(): VehicleObject {
     const vehicle = this.pool.acquire();
-    vehicle.position.set(pickRandom(LANE_OFFSETS) + randomRange(-0.35, 0.35), 0, SPAWN_Z);
+
+    // Re-roll the pooled car type on every spawn so a single truck in the pool
+    // cannot become every fifth vehicle forever.
+    const silhouette = randomTrafficSilhouette();
+    if (vehicle.userData.silhouette !== silhouette) {
+      this.workshop.reskin(vehicle, silhouette, randomTrafficLivery(), false);
+    }
+
+    const lane = pickRandom(LANE_OFFSETS);
+    const jitter = silhouette === 'truck' ? TRAFFIC.truckLaneJitter : TRAFFIC.laneJitter;
+    vehicle.position.set(lane + randomRange(-jitter, jitter), 0, SPAWN_Z);
     vehicle.userData.speed = randomRange(TRAFFIC.minSpeed, TRAFFIC.maxSpeed);
     vehicle.userData.passed = false;
     this.active.push(vehicle);
     return vehicle;
   }
 
-  /**
-   * Seeds the road so the first frame is never empty. A run gets a wider,
-   * sparser runway with the centre lanes cleared, giving the player a moment
-   * to find the controls before the first real gap.
-   */
+  /** Seeds a small amount of readable traffic without front-loading difficulty. */
   private prefill(isRun: boolean): void {
-    const start = isRun ? -52 : -14;
-    const gap = isRun ? 17 : 11;
+    const count = isRun ? TRAFFIC.runPrefillCount : TRAFFIC.attractPrefillCount;
+    const start = isRun ? -118 : -18;
+    const gap = isRun ? 34 : 22;
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < count; i++) {
       const vehicle = this.spawn();
-      vehicle.position.z = start - i * gap - randomRange(0, 6);
-      if (isRun && i < 5 && Math.abs(vehicle.position.x) < 2.5) {
+      vehicle.position.z = start - i * gap - randomRange(0, isRun ? 8 : 5);
+
+      // Give the first few seconds a clear central escape route.
+      if (isRun && i < 3 && Math.abs(vehicle.position.x) < 2.6) {
         vehicle.position.x = vehicle.position.x < 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
       }
     }
