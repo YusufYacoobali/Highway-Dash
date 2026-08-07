@@ -8,7 +8,11 @@ import { MeshoptSimplifier } from 'meshoptimizer';
 
 const INPUT_DIR = 'assets/new-models';
 const OUTPUT_DIR = 'assets/game-models';
-const TARGET_TRIANGLES = 9000;
+
+// The previous ~10k target was excellent for FPS but too destructive for these
+// very dense Meshy cars. ~45k retains the silhouette, wheel arches, glass and
+// body curvature while still cutting ~90% of the source geometry.
+const TARGET_TRIANGLES = 45000;
 
 await MeshoptSimplifier.ready;
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -32,31 +36,34 @@ for (const file of files) {
     .createMaterial('mobile-vertex-color')
     .setBaseColorFactor([1, 1, 1, 1])
     .setMetallicFactor(0.02)
-    .setRoughnessFactor(0.82)
+    .setRoughnessFactor(0.78)
     .setDoubleSided(false);
 
   for (const mesh of root.listMeshes()) {
     for (const primitive of mesh.listPrimitives()) primitive.setMaterial(gameMaterial);
   }
 
-  await document.transform(dedup(), weld({ toleranceNormal: 0.35 }), prune());
+  // Only weld genuinely near-identical vertices. The old aggressive normal
+  // tolerance could erase important hard edges around windows/wheels.
+  await document.transform(dedup(), weld({ toleranceNormal: 0.05 }), prune());
 
-  // Meshopt's ratio is vertex-based, so use a second pass when needed to get
-  // close to the actual traffic triangle budget rather than stopping early.
-  for (let pass = 0; pass < 2; pass++) {
-    const currentTriangles = countTriangles(document);
-    if (currentTriangles <= TARGET_TRIANGLES * 1.2) break;
-    const ratio = Math.max(0.008, Math.min(0.9, TARGET_TRIANGLES / currentTriangles));
+  const currentTriangles = countTriangles(document);
+  if (currentTriangles > TARGET_TRIANGLES * 1.15) {
+    const ratio = Math.max(0.05, Math.min(0.95, TARGET_TRIANGLES / currentTriangles));
     await document.transform(
       simplify({
         simplifier: MeshoptSimplifier,
         ratio,
-        error: 0.0035,
-        lockBorder: false,
+        // Very small geometric error: favour recognizable car shape over the
+        // last few KB. Border locking also protects panel/wheel silhouettes.
+        error: 0.0008,
+        lockBorder: true,
       }),
     );
   }
 
+  // Collapse to a cheap runtime representation after simplification. This
+  // reduces draw calls without changing the visible geometry.
   await document.transform(flatten(), join({ keepMeshes: false }), dedup(), prune());
 
   for (const material of root.listMaterials()) {
