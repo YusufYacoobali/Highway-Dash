@@ -6,7 +6,6 @@ import {
   LinearFilter,
   LinearMipmapLinearFilter,
   LinearMipmapNearestFilter,
-  Material,
   MirroredRepeatWrapping,
   NearestFilter,
   NearestMipmapLinearFilter,
@@ -15,8 +14,8 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
   Texture,
+  type Material,
   type MeshStandardMaterial,
-  type TextureFilter,
   type Wrapping,
 } from 'three';
 
@@ -127,13 +126,7 @@ export async function restoreEmbeddedGlbTextures(
     const pbr = definition.pbrMetallicRoughness;
 
     if (pbr?.baseColorTexture) {
-      material.map = await makeTexture(
-        parsed,
-        pbr.baseColorTexture,
-        imageCache,
-        cacheKey,
-        true,
-      );
+      material.map = await makeTexture(parsed, pbr.baseColorTexture, imageCache, cacheKey, true);
     }
 
     if (pbr?.metallicRoughnessTexture) {
@@ -315,8 +308,8 @@ function applySampler(texture: Texture, sampler?: SamplerDef): void {
   texture.wrapS = sampler?.wrapS ? wrapping(sampler.wrapS) : RepeatWrapping;
   texture.wrapT = sampler?.wrapT ? wrapping(sampler.wrapT) : RepeatWrapping;
 
-  if (sampler?.magFilter) texture.magFilter = filter(sampler.magFilter);
-  if (sampler?.minFilter) texture.minFilter = filter(sampler.minFilter);
+  if (sampler?.magFilter) texture.magFilter = magnificationFilter(sampler.magFilter);
+  if (sampler?.minFilter) texture.minFilter = minificationFilter(sampler.minFilter);
 }
 
 function wrapping(value: number): Wrapping {
@@ -331,7 +324,11 @@ function wrapping(value: number): Wrapping {
   }
 }
 
-function filter(value: number): TextureFilter {
+function magnificationFilter(value: number): Texture['magFilter'] {
+  return value === 9728 ? NearestFilter : LinearFilter;
+}
+
+function minificationFilter(value: number): Texture['minFilter'] {
   switch (value) {
     case 9728:
       return NearestFilter;
