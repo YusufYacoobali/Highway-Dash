@@ -26,6 +26,7 @@ import { HeatSystem } from './systems/HeatSystem';
 import { PickupSystem } from './systems/PickupSystem';
 import { PlayerSystem } from './systems/PlayerSystem';
 import { PoliceSystem } from './systems/PoliceSystem';
+import { RoadLayoutSystem } from './systems/RoadLayoutSystem';
 import { RunDirectorSystem } from './systems/RunDirectorSystem';
 import { ScoreSystem } from './systems/ScoreSystem';
 import { SpeedFxSystem } from './systems/SpeedFxSystem';
@@ -40,6 +41,7 @@ import type {
   RunState,
   SystemContext,
   VehicleObject,
+  WorldThemeId,
 } from './types';
 import { VehicleWorkshop } from './vehicles/VehicleWorkshop';
 import { PLAYER_MODEL_ID } from './vehicles/vehicleModelConfig';
@@ -50,6 +52,7 @@ import { buildSky } from './world/SkyBuilder';
 const MAX_FRAME_DELTA = 0.05;
 const SPEED_RESPONSE = 4.4;
 const IDLE_RUN_SPEED = 50;
+const ATTRACT_THEMES: readonly WorldThemeId[] = ['sunset', 'neon', 'night'];
 
 function createRunState(mode: EngineMode): RunState {
   return {
@@ -72,6 +75,8 @@ function createRunState(mode: EngineMode): RunState {
     topSpeedKmh: 120,
     nitroRemaining: 0,
     nitroCooldown: 0,
+    nitroGraceRemaining: 0,
+    nitroSmashes: 0,
     started: false,
     crashed: false,
     cameraShake: 0,
@@ -85,6 +90,7 @@ function createRunState(mode: EngineMode): RunState {
     intensity: 0,
     trafficIntensity: 0.48,
     policePressure: 0,
+    laneCount: 4,
   };
 }
 
@@ -123,7 +129,8 @@ export class GameEngine {
 
     this.addLights();
     buildSky(this.scene);
-    const bands = [...buildRoad(this.scene), buildScenery(this.scene)];
+    const road = buildRoad(this.scene);
+    const bands = [...road.bands, buildScenery(this.scene)];
 
     this.player = this.workshop.create({
       silhouette: car.silhouette,
@@ -152,11 +159,12 @@ export class GameEngine {
       director,
       new PlayerSystem(),
       new WorldScrollSystem(bands),
+      new RoadLayoutSystem(road.dashColumns),
       worldTheme,
       new TrafficSystem(this.scene, this.workshop, {
         onNearMiss: () => this.handleNearMiss(),
         onImpact: () => this.crash('SMASHED'),
-        onRam: () => this.handleRam(),
+        onRam: (grace) => this.handleRam(grace),
       }),
       new PickupSystem(this.scene, {
         onCoinCollected: (value) => {
@@ -219,13 +227,17 @@ export class GameEngine {
   fireNitro(): boolean {
     const { state } = this;
     if (state.mode !== 'run' || state.crashed) return false;
-    if (state.nitroCooldown > 0) return false;
+    if (state.nitroCooldown > 0 || state.nitroGraceRemaining > 0) return false;
 
     state.nitroRemaining = this.tuning.nitroSeconds;
+    state.nitroGraceRemaining = 0;
+    state.nitroSmashes = 0;
     const cooldown = state.event === 'nitroRush' ? NITRO.frenzyCooldownSeconds : NITRO.cooldownSeconds;
     state.nitroCooldown = this.tuning.nitroSeconds + cooldown;
     state.started = true;
-    state.cameraShake = Math.max(state.cameraShake, 0.9);
+    state.cameraShake = Math.max(state.cameraShake, 1.25);
+    state.slowMoRemaining = NITRO.ignitionHitStopSeconds;
+    state.slowMoScale = NITRO.ignitionHitStopScale;
     this.events.emit('nitroFired', {});
     return true;
   }
@@ -289,12 +301,26 @@ export class GameEngine {
     const { state, tuning } = this;
 
     if (state.mode === 'attract') {
-      state.speed = ATTRACT_SPEED;
+      const phase = state.elapsed % 8.2;
+      const burst = phase > 4.5 && phase < 6.25;
+      state.nitroRemaining = burst ? 1 : 0;
+      state.nitroGraceRemaining = 0;
+      state.nitroSmashes = 0;
+      state.theme = ATTRACT_THEMES[Math.floor(state.elapsed / 10.5) % ATTRACT_THEMES.length] ?? 'sunset';
+      const target = ATTRACT_SPEED * (burst ? 2.05 : 1.22);
+      state.speed = damp(state.speed, target, burst ? 5.5 : 2.2, dt);
       return;
     }
 
+    const wasNitroActive = state.nitroRemaining > 0;
     state.nitroRemaining = Math.max(0, state.nitroRemaining - dt);
     state.nitroCooldown = Math.max(0, state.nitroCooldown - dt);
+    state.nitroGraceRemaining = Math.max(0, state.nitroGraceRemaining - dt);
+
+    if (wasNitroActive && state.nitroRemaining <= 0) {
+      state.nitroGraceRemaining = Math.max(state.nitroGraceRemaining, NITRO.graceSeconds);
+      state.cameraShake = Math.max(state.cameraShake, 0.55);
+    }
 
     if (!state.started) {
       state.speed = IDLE_RUN_SPEED;
@@ -336,11 +362,16 @@ export class GameEngine {
     this.events.emit('nearMiss', { combo: this.state.combo, stars: this.state.stars });
   }
 
-  private handleRam(): void {
+  private handleRam(grace: boolean): void {
+    this.state.nitroSmashes += 1;
     this.scoreSystem.registerRam(this.state);
-    this.state.slowMoRemaining = SLOW_MO.ramSeconds;
-    this.state.slowMoScale = SLOW_MO.ramScale;
-    this.events.emit('trafficRammed', { combo: this.state.combo });
+    this.state.slowMoRemaining = grace ? 0.045 : SLOW_MO.ramSeconds;
+    this.state.slowMoScale = grace ? 0.62 : SLOW_MO.ramScale;
+    this.events.emit('trafficRammed', {
+      combo: this.state.combo,
+      smashCount: this.state.nitroSmashes,
+      grace,
+    });
   }
 
   private crash(cause: RunResult['cause']): void {
