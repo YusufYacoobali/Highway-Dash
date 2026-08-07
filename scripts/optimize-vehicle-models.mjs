@@ -166,3 +166,4 @@ function countTriangles(document) {
 }
 
 // PR trigger used to run the optimizer against repository-hosted binary GLBs.
+// Second run commits the generated game-models back onto this branch.
