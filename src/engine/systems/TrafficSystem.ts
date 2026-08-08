@@ -1,27 +1,54 @@
 import type { Scene } from 'three';
 
 import { ObjectPool } from '@/core/ObjectPool';
-import { clamp, randomRange } from '@/core/math';
+import { clamp, damp, randomRange, randomSign } from '@/core/math';
 import type { VehicleSilhouette } from '@/domain/cars';
 import {
+  CONTACT,
   DESPAWN_Z,
+  DRAFT,
   HEAT,
   LANE_OFFSETS,
   laneOffsetsFor,
   SPAWN_Z,
   TRAFFIC,
 } from '@/engine/config';
-import type { GameSystem, SystemContext, VehicleObject } from '@/engine/types';
+import type { GameSystem, RunState, SystemContext, VehicleObject } from '@/engine/types';
 import { randomTrafficLivery, VehicleWorkshop } from '@/engine/vehicles/VehicleWorkshop';
 import { activeModelIdAt } from '@/engine/vehicles/vehicleModelConfig';
 
 export interface TrafficObserver {
-  onNearMiss(): void;
+  /**
+   * `side` is -1/1 towards the car that was squeezed past, `gap` the absolute
+   * lateral distance — the engine decides how close counts as cinematic.
+   */
+  onNearMiss(side: number, gap: number): void;
+  /** A hit with real overlap. Always fatal. */
   onImpact(): void;
   onRam(grace: boolean): void;
+  /** A survivable graze. `severity` is 0–1, `side` shoves the player away. */
+  onSideswipe(severity: number, side: number): void;
 }
 
-const TEST_TRAFFIC_SILHOUETTE: VehicleSilhouette = 'hatch';
+/**
+ * Outside the ~1.5 m contact half-width but well inside the 3.45 m near-miss
+ * window, so the opening pass is a guaranteed near miss and never a crash.
+ */
+const TEACHER_OFFSET_X = 2.15;
+const TEACHER_SPAWN_Z = -178;
+
+const TRAFFIC_SILHOUETTES: readonly VehicleSilhouette[] = ['hatch', 'sedan', 'suv', 'truck'];
+/** Trucks are the read-at-a-glance hazard, so they stay comparatively rare. */
+const SILHOUETTE_WEIGHTS: readonly number[] = [0.34, 0.32, 0.22, 0.12];
+
+function rollSilhouette(): VehicleSilhouette {
+  let roll = Math.random();
+  for (let i = 0; i < TRAFFIC_SILHOUETTES.length; i++) {
+    roll -= SILHOUETTE_WEIGHTS[i];
+    if (roll <= 0) return TRAFFIC_SILHOUETTES[i];
+  }
+  return TRAFFIC_SILHOUETTES[0];
+}
 
 /** Pattern-driven traffic that becomes genuinely busy later without removing escape routes. */
 export class TrafficSystem implements GameSystem {
@@ -44,7 +71,7 @@ export class TrafficSystem implements GameSystem {
     this.pool = new ObjectPool<VehicleObject>(
       () => {
         const vehicle = this.workshop.create({
-          silhouette: TEST_TRAFFIC_SILHOUETTE,
+          silhouette: rollSilhouette(),
           livery: randomTrafficLivery(),
           modelId: activeModelIdAt(this.modelCursor++),
           recolor: false,
@@ -183,6 +210,8 @@ export class TrafficSystem implements GameSystem {
   }
 
   private driveStep({ state, tuning, player, dt }: SystemContext): void {
+    let drafting = false;
+
     for (let i = this.active.length - 1; i >= 0; i--) {
       const vehicle = this.active[i];
 
@@ -192,44 +221,200 @@ export class TrafficSystem implements GameSystem {
         continue;
       }
 
-      vehicle.position.z += (state.speed - vehicle.userData.speed) * dt;
+      // Where the car was relative to the player *before* the step. At full
+      // nitro the pair close ~12 m in a capped frame, far wider than the
+      // contact box, so a point-in-box test would let them pass through
+      // each other on any device that dips below 30 fps.
+      const previousDz = vehicle.position.z - player.position.z;
+      vehicle.position.z += (state.speed - this.queueSpeed(vehicle)) * dt;
+      this.applyFlinch(vehicle, player.position.x, player.position.z, state, dt);
 
-      if (state.mode === 'run' && !state.crashed) {
-        const dx = Math.abs(vehicle.position.x - player.position.x);
-        const dz = vehicle.position.z - player.position.z;
-        const vehicleWidthScale =
-          vehicle.userData.silhouette === 'truck'
-            ? TRAFFIC.truckCollisionWidthScale
-            : TRAFFIC.collisionWidthScale;
-        const halfWidth =
-          (vehicle.userData.width * vehicleWidthScale +
-            player.userData.width * TRAFFIC.collisionWidthScale) /
-          2;
+      const dz = vehicle.position.z - player.position.z;
+      const dx = Math.abs(vehicle.position.x - player.position.x);
+      const halfWidth = this.contactHalfWidth(vehicle, player);
+      // dz only ever increases, so the box was crossed if the car started
+      // before the far edge and finished past the near one.
+      const overlapped =
+        previousDz < TRAFFIC.playerHalfLength &&
+        dz > -TRAFFIC.playerHalfLength &&
+        dx < halfWidth;
 
-        if (dz > -TRAFFIC.playerHalfLength && dz < TRAFFIC.playerHalfLength && dx < halfWidth) {
-          if (state.nitroRemaining > 0) {
-            this.launchVehicle(vehicle, player.position.x, state, false);
-            this.observer.onRam(false);
-            continue;
-          }
+      // The menu car is indestructible and everything bounces off it. The
+      // attract loop is the shop window, so it plays the power fantasy.
+      if (state.mode === 'attract') {
+        if (overlapped) {
+          this.launchVehicle(vehicle, player.position.x, state, false);
+          state.cameraShake = Math.max(state.cameraShake, 1.6);
+        }
+        if (vehicle.position.z > DESPAWN_Z) this.recycleAt(i);
+        continue;
+      }
 
-          if (state.nitroGraceRemaining > 0) {
-            this.launchVehicle(vehicle, player.position.x, state, true);
-            this.observer.onRam(true);
-            continue;
-          }
+      if (!state.crashed) {
+        if (overlapped && this.resolveContact(vehicle, player.position.x, state, dx, halfWidth)) {
+          continue;
+        }
+        if (overlapped && state.crashed) return;
 
-          this.observer.onImpact();
-          return;
+        // Sitting in the wake of the car ahead. Checked before the pass latch
+        // so the same car can be drafted and then near-missed.
+        if (dz < -DRAFT.minGap && dz > -DRAFT.maxGap && dx < DRAFT.lateral) {
+          drafting = true;
         }
 
         if (!vehicle.userData.passed && dz > 1.5) {
           vehicle.userData.passed = true;
-          if (dx < tuning.nearMissWindow) this.observer.onNearMiss();
+          if (dx < tuning.nearMissWindow && !vehicle.userData.scraped) {
+            const side = Math.sign(vehicle.position.x - player.position.x) || randomSign();
+            this.observer.onNearMiss(side, dx);
+          }
         }
       }
 
       if (vehicle.position.z > DESPAWN_Z) this.recycleAt(i);
+    }
+
+    state.drafting = state.mode === 'run' && !state.crashed && drafting;
+  }
+
+  /**
+   * A car never drives faster than whatever is directly in front of it in its
+   * own lane. Cars are given a random cruise speed at spawn, so without this
+   * the quicker one in a pair simply passed through the slower one.
+   *
+   * Lower z is further up the road, so "ahead" means a smaller z.
+   */
+  private queueSpeed(vehicle: VehicleObject): number {
+    let speed = vehicle.userData.speed;
+
+    for (const other of this.active) {
+      if (other === vehicle || other.userData.rammed) continue;
+      if (Math.abs(other.position.x - vehicle.position.x) > TRAFFIC.followLateral) continue;
+
+      const gap = vehicle.position.z - other.position.z;
+      if (gap <= 0 || gap > TRAFFIC.followDistance) continue;
+
+      if (other.userData.speed < speed) speed = other.userData.speed;
+    }
+
+    return speed;
+  }
+
+  private contactHalfWidth(vehicle: VehicleObject, player: VehicleObject): number {
+    const vehicleWidthScale =
+      vehicle.userData.silhouette === 'truck'
+        ? TRAFFIC.truckCollisionWidthScale
+        : TRAFFIC.collisionWidthScale;
+    return (
+      (vehicle.userData.width * vehicleWidthScale +
+        player.userData.width * TRAFFIC.collisionWidthScale) /
+      2
+    );
+  }
+
+  /**
+   * Decides what a contact *means*. Returns true when the car survived as a
+   * separate object (launched or scraped) and the caller should keep going;
+   * the caller checks `state.crashed` for the fatal case.
+   */
+  private resolveContact(
+    vehicle: VehicleObject,
+    playerX: number,
+    state: RunState,
+    dx: number,
+    halfWidth: number,
+  ): boolean {
+    if (state.nitroRemaining > 0) {
+      this.launchVehicle(vehicle, playerX, state, false);
+      this.observer.onRam(false);
+      return true;
+    }
+
+    if (state.nitroGraceRemaining > 0) {
+      this.launchVehicle(vehicle, playerX, state, true);
+      this.observer.onRam(true);
+      return true;
+    }
+
+    // 0 at the very edge of the boxes, 1 dead centre.
+    const overlapRatio = 1 - dx / halfWidth;
+
+    if (vehicle.userData.scraped) return true;
+
+    // Being shoved into a second car by the scrape you just survived is the
+    // least fair death in the genre. But the immunity used to *ignore* the
+    // contact outright, which at 100 m/s let the player ghost clean through a
+    // whole row. It now downgrades the hit to a scrape instead: you always
+    // bounce off something, you are never simply not there.
+    const grazed =
+      overlapRatio < CONTACT.sideswipeRatio || state.contactImmunityRemaining > 0;
+
+    if (grazed) {
+      vehicle.userData.scraped = true;
+      const side = Math.sign(playerX - vehicle.position.x) || randomSign();
+      // Both cars are thrown apart — the traffic car visibly loses the fight.
+      vehicle.userData.driftVelocityX = -side * 5.2;
+      this.observer.onSideswipe(
+        Math.min(1, overlapRatio / CONTACT.sideswipeRatio),
+        side,
+      );
+      return true;
+    }
+
+    this.observer.onImpact();
+    return false;
+  }
+
+  /**
+   * Traffic flinches away from a car bearing down on it. It reads as drivers
+   * reacting, and it widens the gap the player was already aiming at — which
+   * is the honest way to keep a busy road survivable.
+   */
+  private applyFlinch(
+    vehicle: VehicleObject,
+    playerX: number,
+    playerZ: number,
+    state: RunState,
+    dt: number,
+  ): void {
+    const laneX = vehicle.userData.laneX ?? vehicle.position.x;
+    const dz = vehicle.position.z - playerZ;
+    const dx = vehicle.position.x - playerX;
+
+    const bearingDown =
+      state.mode === 'run' &&
+      !state.crashed &&
+      dz < 0 &&
+      dz > -TRAFFIC.reactDistance &&
+      Math.abs(dx) < TRAFFIC.reactLateral;
+
+    let target = 0;
+    if (bearingDown) {
+      const urgency = 1 - Math.abs(dz) / TRAFFIC.reactDistance;
+      target = (Math.sign(dx) || randomSign()) * TRAFFIC.reactDriftSpeed * urgency;
+    }
+
+    const drift = damp(
+      vehicle.userData.driftVelocityX ?? 0,
+      target,
+      TRAFFIC.reactDriftAccel,
+      dt,
+    );
+    vehicle.userData.driftVelocityX = drift;
+    // Clamped against the car's own lane, not the road. Drifting relative to
+    // the road let a flinch wander far enough to close a set-piece's gap.
+    vehicle.position.x = clamp(
+      clamp(
+        vehicle.position.x + drift * dt,
+        laneX - TRAFFIC.reactMaxDrift,
+        laneX + TRAFFIC.reactMaxDrift,
+      ),
+      -TRAFFIC.reactMaxOffset,
+      TRAFFIC.reactMaxOffset,
+    );
+
+    if (!bearingDown && Math.abs(drift) < 0.35) {
+      vehicle.position.x = damp(vehicle.position.x, laneX, TRAFFIC.reactRecoverRate, dt);
     }
   }
 
@@ -269,17 +454,79 @@ export class TrafficSystem implements GameSystem {
     vehicle.rotation.z += spin * 0.7 * dt;
   }
 
+  /** Nearest lane index to a world x, or -1 when the car is between lanes. */
+  private laneIndexFor(x: number): number {
+    let best = -1;
+    let bestDistance = Infinity;
+    for (let lane = 0; lane < this.lanes.length; lane++) {
+      const distance = Math.abs(this.lanes[lane] - x);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = lane;
+      }
+    }
+    return bestDistance <= 1.6 ? best : -1;
+  }
+
+  /**
+   * Would putting a car in this lane, at this z, leave the player no opening?
+   *
+   * Individual set-pieces all leave a gap, but nothing used to stop the
+   * ordinary spawn cadence — or a second set-piece — from dropping a car into
+   * exactly that gap. This is the backstop that makes "there is always a way
+   * through" true globally rather than per-pattern.
+   */
+  private sealsRoad(lane: number, z: number): boolean {
+    const occupied = new Set<number>([lane]);
+    for (const other of this.active) {
+      if (other.userData.rammed) continue;
+      if (Math.abs(other.position.z - z) > TRAFFIC.safeGapZ) continue;
+      const index = this.laneIndexFor(other.position.x);
+      if (index >= 0) occupied.add(index);
+    }
+    return occupied.size >= this.lanes.length;
+  }
+
   private spawn(laneIndex?: number, zOffset = 0): VehicleObject {
     const vehicle = this.pool.acquire();
-    const lane = laneIndex ?? this.pickOpenLane();
-    const laneX = this.lanes[lane] ?? this.lanes[Math.floor(this.lanes.length / 2)] ?? 0;
-    vehicle.position.set(
-      laneX + randomRange(-TRAFFIC.laneJitter, TRAFFIC.laneJitter),
-      0,
-      SPAWN_Z + zOffset,
-    );
+    let lane = laneIndex ?? this.pickOpenLane();
+    let z = SPAWN_Z + zOffset;
+
+    if (this.sealsRoad(lane, z)) {
+      // Prefer another lane in the same row; if the row is genuinely full,
+      // drop this car well behind so it forms its own row instead.
+      const alternative = this.lanes.findIndex(
+        (_, candidate) => candidate !== lane && !this.sealsRoad(candidate, z),
+      );
+      if (alternative >= 0) lane = alternative;
+      else z -= TRAFFIC.safeGapZ * 2.5;
+    }
+
+    const laneCentre = this.lanes[lane] ?? this.lanes[Math.floor(this.lanes.length / 2)] ?? 0;
+
+    // Never drop a car on top of one already occupying this lane. Set pieces
+    // and the pair/wall spawners pass an explicit lane, so they bypass the
+    // occupancy weighting in `pickOpenLane` entirely.
+    let blockedBy = Infinity;
+    for (const other of this.active) {
+      if (other.userData.rammed) continue;
+      if (Math.abs(other.position.x - laneCentre) > TRAFFIC.followLateral) continue;
+      if (other.position.z > z + TRAFFIC.minSpawnGap) continue;
+      if (other.position.z < z - TRAFFIC.minSpawnGap * 3) continue;
+      blockedBy = Math.min(blockedBy, other.position.z);
+    }
+    if (blockedBy !== Infinity) z = blockedBy - TRAFFIC.minSpawnGap;
+
+    const jitter =
+      vehicle.userData.silhouette === 'truck' ? TRAFFIC.truckLaneJitter : TRAFFIC.laneJitter;
+    const laneX = laneCentre + randomRange(-jitter, jitter);
+
+    vehicle.position.set(laneX, 0, z);
     vehicle.rotation.set(0, 0, 0);
     vehicle.userData.speed = randomRange(TRAFFIC.minSpeed, TRAFFIC.maxSpeed);
+    vehicle.userData.laneX = laneX;
+    vehicle.userData.driftVelocityX = 0;
+    vehicle.userData.scraped = false;
     vehicle.userData.passed = false;
     vehicle.userData.rammed = false;
     vehicle.userData.ramVelocityX = 0;
@@ -429,8 +676,31 @@ export class TrafficSystem implements GameSystem {
     for (let i = 0; i < count; i++) {
       const vehicle = this.spawn(i % this.lanes.length);
       vehicle.position.z = start - i * gap - randomRange(0, isRun ? 8 : 5);
-      if (isRun && i < 2) vehicle.position.x = i === 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
+      if (isRun && i < 2) {
+        // Open the middle so the first thing a run shows is a clear line.
+        vehicle.position.x = i === 0 ? LANE_OFFSETS[0] : LANE_OFFSETS[3];
+        vehicle.userData.laneX = vehicle.position.x;
+      }
     }
+
+    if (isRun) this.spawnTeacher();
+  }
+
+  /**
+   * The scripted opening. A player who touches nothing still passes this car
+   * inside the near-miss window, so the first thing the run teaches is that
+   * driving *close* is the point — learned by doing it, not by reading a hint.
+   *
+   * It sits just outside the contact box, so it cannot punish that lesson.
+   */
+  private spawnTeacher(): void {
+    const side = randomSign();
+    const vehicle = this.spawn(side < 0 ? 1 : 2);
+    vehicle.position.x = side * TEACHER_OFFSET_X;
+    vehicle.position.z = TEACHER_SPAWN_Z;
+    vehicle.userData.laneX = vehicle.position.x;
+    // Slow, so it arrives on schedule and is easy to read coming.
+    vehicle.userData.speed = TRAFFIC.minSpeed;
   }
 
   private recycleAt(index: number): void {
@@ -438,6 +708,8 @@ export class TrafficSystem implements GameSystem {
     vehicle.rotation.set(0, 0, 0);
     vehicle.position.y = 0;
     vehicle.userData.rammed = false;
+    vehicle.userData.scraped = false;
+    vehicle.userData.driftVelocityX = 0;
     this.pool.release(vehicle);
   }
 

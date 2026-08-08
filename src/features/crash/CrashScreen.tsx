@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { crashHeadline, crashSubtitle } from '@/domain/runResult';
+import { crashHeadline, crashSubtitle, formatKm } from '@/domain/runResult';
 import { XP_PER_TIER } from '@/domain/season';
 import type { RunSummary } from '@/state/profileStore';
 import { AppText, ChunkyButton, CoinIcon, ProgressBar } from '@/ui/components';
@@ -11,7 +11,7 @@ import { alpha, palette, radii, spacing } from '@/ui/theme';
 
 export interface CrashScreenProps {
   summary: RunSummary;
-  bestDistance: number;
+  bestScore: number;
   carName: string;
   seasonXp: number;
   onReplay(): void;
@@ -21,7 +21,7 @@ export interface CrashScreenProps {
 
 export const CrashScreen: React.FC<CrashScreenProps> = ({
   summary,
-  bestDistance,
+  bestScore,
   carName,
   seasonXp,
   onReplay,
@@ -31,10 +31,15 @@ export const CrashScreen: React.FC<CrashScreenProps> = ({
   const insets = useSafeAreaInsets();
   const { run, payout, isNewBest } = summary;
 
+  // Distance and best multiplier sit side by side on purpose: the pair of them
+  // is the post-mortem. A long run at x1.2 and a short one at x7 read very
+  // differently, and that contrast is what sends people back in.
   const stats = [
+    { label: 'DISTANCE', value: `${formatKm(run.distance)} KM` },
+    { label: 'BEST MULTIPLIER', value: `x${run.bestMultiplier.toFixed(1)}` },
     { label: 'NEAR MISSES', value: `${run.nearMisses}` },
-    { label: 'TOP SPEED', value: `${run.topSpeed}` },
     { label: 'BEST COMBO', value: `x${run.bestCombo}` },
+    { label: 'TOP SPEED', value: `${run.topSpeed} KM/H` },
     { label: 'CAR', value: carName },
   ];
 
@@ -61,16 +66,22 @@ export const CrashScreen: React.FC<CrashScreenProps> = ({
       </View>
 
       <View style={styles.scoreBlock}>
-        <AppText variant="caption" color={alpha.white45} align="center">DISTANCE</AppText>
+        <AppText variant="caption" color={alpha.white45} align="center">SCORE</AppText>
         <View style={styles.distanceRow}>
           <AppText variant="displayXL" color={palette.white} style={styles.distance}>
-            {run.distance.toLocaleString()}
+            {run.score.toLocaleString()}
           </AppText>
-          <AppText variant="displayS" color={alpha.white55}>M</AppText>
         </View>
         <AppText variant="label" color={isNewBest ? palette.gold : alpha.white45} align="center">
-          {isNewBest ? 'NEW PERSONAL BEST' : `BEST ${bestDistance.toLocaleString()} M`}
+          {isNewBest ? 'NEW PERSONAL BEST' : `BEST ${bestScore.toLocaleString()}`}
         </AppText>
+        {/* The gap to beat, stated plainly. Nothing sends a player back in
+            faster than finding out they were close. */}
+        {!isNewBest && bestScore > 0 ? (
+          <AppText variant="bodyStrong" color={palette.cyanIce} align="center" style={styles.deficit}>
+            {`${(bestScore - run.score).toLocaleString()} SHORT`}
+          </AppText>
+        ) : null}
       </View>
 
       <View style={styles.statsGrid}>
@@ -128,6 +139,7 @@ const styles = StyleSheet.create({
   },
   distanceRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
   distance: { fontSize: 68, lineHeight: 72 },
+  deficit: { marginTop: 2 },
   statsGrid: {
     marginTop: 24,
     marginHorizontal: 20,
@@ -139,7 +151,7 @@ const styles = StyleSheet.create({
   },
   stat: {
     width: '50%',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: alpha.white08,

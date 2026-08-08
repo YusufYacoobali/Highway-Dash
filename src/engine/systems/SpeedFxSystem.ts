@@ -66,7 +66,12 @@ export class SpeedFxSystem implements GameSystem {
   update({ state, tuning, dt, scroll }: SystemContext): void {
     const nitro = state.nitroRemaining > 0;
     const grace = state.nitroGraceRemaining > 0;
-    const streakMode = nitro || grace || state.intensity > 0.74;
+    // A close pass fires a short burst of streaks, and drafting holds them on,
+    // so both read as air moving over the car rather than as UI.
+    const nearMissFlash = state.nearMissFlashRemaining > 0;
+    state.nearMissFlashRemaining = Math.max(0, state.nearMissFlashRemaining - dt);
+    const streakMode =
+      nitro || grace || nearMissFlash || state.drafting || state.intensity > 0.74;
     this.flames.visible = nitro;
     this.streaks.visible = streakMode;
 
@@ -95,7 +100,7 @@ export class SpeedFxSystem implements GameSystem {
 
     if (!streakMode) return;
     const attribute = this.streaks.geometry.getAttribute('position') as Float32BufferAttribute;
-    const boost = nitro ? 2.75 : grace ? 1.7 : 1.35;
+    const boost = nitro ? 2.75 : grace ? 1.7 : state.drafting ? 1.55 : 1.35;
 
     for (let i = 0; i < STREAK_COUNT; i++) {
       const a = i * 2;

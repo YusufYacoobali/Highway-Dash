@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { RunModifier } from '@/domain/runModifier';
 import { AppText, ChunkyButton, CoinChip, GemChip } from '@/ui/components';
 import { alpha, palette, radii, spacing } from '@/ui/theme';
 
@@ -10,6 +11,8 @@ export interface MenuScreenProps {
   coins: number;
   gems: number;
   claimableMissions: number;
+  modifier: RunModifier;
+  modifierColor: string;
   onPlay(): void;
   onGarage(): void;
   onMissions(): void;
@@ -20,6 +23,8 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
   coins,
   gems,
   claimableMissions,
+  modifier,
+  modifierColor,
   onPlay,
   onGarage,
   onMissions,
@@ -54,9 +59,18 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
         </AppText>
       </View>
 
+      {/* Everyone gets the same modifier today, so "what did you get?" is a
+          real question without a single line of backend. */}
       <View style={styles.liveTag} pointerEvents="none">
-        <View style={styles.liveDot} />
-        <AppText variant="micro" color={alpha.white85}>LIVE CHAOS</AppText>
+        <View style={[styles.liveDot, { backgroundColor: modifierColor }]} />
+        <AppText variant="micro" color={alpha.white85}>TODAY</AppText>
+        <AppText variant="micro" color={modifierColor}>{modifier.name}</AppText>
+      </View>
+
+      <View style={styles.modifierBlurb} pointerEvents="none">
+        <AppText variant="micro" align="center" color={alpha.white62}>
+          {modifier.blurb}
+        </AppText>
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
@@ -150,6 +164,13 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 4,
     backgroundColor: palette.redHot,
+  },
+  modifierBlurb: {
+    position: 'absolute',
+    top: '31%',
+    left: 24,
+    right: 24,
+    marginTop: 34,
   },
   footer: {
     marginTop: 'auto',

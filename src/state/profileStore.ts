@@ -20,6 +20,7 @@ import {
   rollDailyMissions,
 } from '@/domain/missions';
 import { RunResult } from '@/domain/runResult';
+import { RunModifier } from '@/domain/runModifier';
 import { applySeasonXp, SEASON_PASS_PRICE_GEMS, SeasonProgress } from '@/domain/season';
 import { advanceStreak, INITIAL_STREAK, StreakState } from '@/domain/streak';
 import { buildRunTuning, RunTuning } from '@/domain/tuning';
@@ -43,6 +44,7 @@ export interface ProfileState {
   crates: number;
   season: SeasonProgress;
   hasSeasonPass: boolean;
+  bestScore: number;
   bestDistance: number;
   totalRuns: number;
   ownedCarIds: string[];
@@ -84,6 +86,7 @@ const INITIAL_PROFILE: ProfileState = {
   crates: 0,
   season: { tier: 1, xp: 0 },
   hasSeasonPass: false,
+  bestScore: 0,
   bestDistance: 0,
   totalRuns: 0,
   ownedCarIds: [DEFAULT_CAR_ID],
@@ -132,6 +135,7 @@ export const useProfileStore = create<ProfileStore>()(
 
         set({
           coins: state.coins + payout.coins,
+          bestScore: Math.max(state.bestScore, run.score),
           bestDistance: Math.max(state.bestDistance, run.distance),
           totalRuns: state.totalRuns + 1,
           season: { tier: award.tier, xp: award.xp },
@@ -142,7 +146,8 @@ export const useProfileStore = create<ProfileStore>()(
           run,
           payout,
           tiersGained: award.tiersGained,
-          isNewBest: run.distance > state.bestDistance,
+          // Score is the headline, so it is what "personal best" means now.
+          isNewBest: run.score > state.bestScore,
         };
       },
 
@@ -270,8 +275,11 @@ export const selectSelectedCar = (state: ProfileStore): CarDefinition =>
  * Not a hook selector: it allocates a fresh object, which would defeat
  * `useSyncExternalStore`'s snapshot caching. Callers memoise it instead.
  */
-export const runTuningFor = (car: CarDefinition, upgrades: UpgradeLevels): RunTuning =>
-  buildRunTuning(car, upgrades);
+export const runTuningFor = (
+  car: CarDefinition,
+  upgrades: UpgradeLevels,
+  modifier?: RunModifier,
+): RunTuning => buildRunTuning(car, upgrades, modifier);
 
 export const selectClaimableMissions = (state: ProfileStore): number =>
   state.daily.missions.filter((m) => !m.claimed && isMissionComplete(m)).length;

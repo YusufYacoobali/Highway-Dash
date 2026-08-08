@@ -24,8 +24,12 @@ export interface GameSurfaceProps {
   onTelemetry(snapshot: Telemetry): void;
   onNearMiss(payload: EngineEvents['nearMiss']): void;
   onStarGained(payload: EngineEvents['starGained']): void;
+  onShookOff(payload: EngineEvents['shookOff']): void;
   onCoinCollected(payload: EngineEvents['coinCollected']): void;
   onTrafficRammed(payload: EngineEvents['trafficRammed']): void;
+  onSideswiped(payload: EngineEvents['sideswiped']): void;
+  onDrafted(payload: EngineEvents['drafted']): void;
+  onGateChosen(payload: EngineEvents['gateChosen']): void;
   onEventStarted(payload: EngineEvents['eventStarted']): void;
   onCrash(result: RunResult): void;
   handleRef?: React.RefObject<GameSurfaceHandle | null>;
@@ -40,8 +44,12 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   onTelemetry,
   onNearMiss,
   onStarGained,
+  onShookOff,
   onCoinCollected,
   onTrafficRammed,
+  onSideswiped,
+  onDrafted,
+  onGateChosen,
   onEventStarted,
   onCrash,
   handleRef,
@@ -55,24 +63,24 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
   const latest = useRef({ mode, car, tuning, runToken });
   latest.current = { mode, car, tuning, runToken };
 
-  const callbacks = useRef({
+  // Built once per render and mirrored into the ref, so the engine's long-lived
+  // event subscriptions always reach the current props. Spelling the object out
+  // twice is how new events kept getting dropped from the initialiser.
+  const handlers = {
     onTelemetry,
     onNearMiss,
     onStarGained,
+    onShookOff,
     onCoinCollected,
     onTrafficRammed,
-    onEventStarted,
-    onCrash,
-  });
-  callbacks.current = {
-    onTelemetry,
-    onNearMiss,
-    onStarGained,
-    onCoinCollected,
-    onTrafficRammed,
+    onSideswiped,
+    onDrafted,
+    onGateChosen,
     onEventStarted,
     onCrash,
   };
+  const callbacks = useRef(handlers);
+  callbacks.current = handlers;
 
   const handleContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -94,8 +102,12 @@ export const GameSurface: React.FC<GameSurfaceProps> = ({
     engine.events.on('telemetry', (snapshot) => callbacks.current.onTelemetry(snapshot));
     engine.events.on('nearMiss', (payload) => callbacks.current.onNearMiss(payload));
     engine.events.on('starGained', (payload) => callbacks.current.onStarGained(payload));
+    engine.events.on('shookOff', (payload) => callbacks.current.onShookOff(payload));
     engine.events.on('coinCollected', (payload) => callbacks.current.onCoinCollected(payload));
     engine.events.on('trafficRammed', (payload) => callbacks.current.onTrafficRammed(payload));
+    engine.events.on('sideswiped', (payload) => callbacks.current.onSideswiped(payload));
+    engine.events.on('drafted', (payload) => callbacks.current.onDrafted(payload));
+    engine.events.on('gateChosen', (payload) => callbacks.current.onGateChosen(payload));
     engine.events.on('eventStarted', (payload) => callbacks.current.onEventStarted(payload));
     engine.events.on('crashed', (result) => callbacks.current.onCrash(result));
 

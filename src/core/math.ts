@@ -12,6 +12,13 @@ export const lerp = (from: number, to: number, t: number): number => from + (to 
 export const damp = (from: number, to: number, rate: number, dt: number): number =>
   lerp(from, to, clamp01(rate * dt));
 
+/** Steps `from` towards `to` by at most `maxDelta` — no easing, hard cap. */
+export const moveTowards = (from: number, to: number, maxDelta: number): number => {
+  const diff = to - from;
+  if (Math.abs(diff) <= maxDelta) return to;
+  return from + Math.sign(diff) * maxDelta;
+};
+
 export const randomRange = (min: number, max: number): number => min + Math.random() * (max - min);
 
 export const randomInt = (maxExclusive: number): number => Math.floor(Math.random() * maxExclusive);

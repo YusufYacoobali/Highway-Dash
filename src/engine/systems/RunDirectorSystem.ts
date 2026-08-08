@@ -1,5 +1,5 @@
-import { clamp, randomRange } from '@/core/math';
-import { RUN_DIRECTOR } from '@/engine/config';
+import { clamp, clamp01, randomRange } from '@/core/math';
+import { ESCALATION, GATE, RUN_DIRECTOR } from '@/engine/config';
 import type { GameSystem, RunEventId, SystemContext, WorldThemeId } from '@/engine/types';
 
 export interface RunDirectorObserver {
@@ -52,7 +52,7 @@ export class RunDirectorSystem implements GameSystem {
 
   constructor(private readonly observer: RunDirectorObserver) {}
 
-  update({ state, dt }: SystemContext): void {
+  update({ state, tuning, dt }: SystemContext): void {
     if (state.mode !== 'run' || state.crashed) return;
 
     const nextTheme = this.themeForState(state.elapsed, state.event);
@@ -69,15 +69,37 @@ export class RunDirectorSystem implements GameSystem {
     const baseDifficulty = clamp(state.elapsed / RUN_DIRECTOR.endlessDifficultySeconds, 0, 1);
     const lateDensity = clamp((state.elapsed - 55) / 120, 0, 1);
     const eventPressure = pressureForEvent(state.event);
-    state.intensity = clamp(baseDifficulty * 0.68 + lateDensity * 0.18 + eventPressure, 0, 1);
+
+    // Holding a chain turns the difficulty up. A big multiplier is therefore a
+    // hard mode the player chose, paying out at a rate they chose.
+    const chainPressure = clamp01(
+      (state.multiplier - ESCALATION.from) / (ESCALATION.to - ESCALATION.from),
+    );
+
+    state.intensity = clamp(
+      baseDifficulty * 0.68 +
+        lateDensity * 0.18 +
+        eventPressure +
+        chainPressure * ESCALATION.intensityBoost,
+      0,
+      1,
+    );
+
+    const gateBoost = state.gateBoostRemaining > 0 ? GATE.boostTrafficBoost : 0;
     state.trafficIntensity = clamp(
-      0.5 + baseDifficulty * 0.4 + lateDensity * 0.26 + eventPressure * 0.58,
+      (0.5 +
+        baseDifficulty * 0.4 +
+        lateDensity * 0.26 +
+        eventPressure * 0.58 +
+        chainPressure * ESCALATION.trafficBoost +
+        gateBoost) *
+        tuning.trafficScale,
       0.4,
-      1.24,
+      1.45,
     );
 
     state.policePressure = clamp((state.stars - 1) / 4, 0, 1);
-    if (state.stars >= 3) state.trafficIntensity = Math.min(1.24, state.trafficIntensity + 0.08);
+    if (state.stars >= 3) state.trafficIntensity = Math.min(1.45, state.trafficIntensity + 0.08);
     if (state.event === 'nitroRush') state.nitroCooldown = Math.min(state.nitroCooldown, 0.18);
   }
 
@@ -108,12 +130,21 @@ export class RunDirectorSystem implements GameSystem {
     }
 
     if (state.event !== 'cruise') {
-      this.start(state, 'cruise', randomRange(4.8, RUN_DIRECTOR.recoverySeconds + 1.5));
+      this.start(
+        state,
+        'cruise',
+        randomRange(4.8, RUN_DIRECTOR.recoverySeconds + 1.5) * recoveryScale(state.elapsed),
+      );
       return;
     }
 
     const event = this.pickEndlessEvent(state.stars, state.elapsed);
-    this.start(state, event, randomRange(RUN_DIRECTOR.eventMinSeconds, RUN_DIRECTOR.eventMaxSeconds));
+    this.start(
+      state,
+      event,
+      randomRange(RUN_DIRECTOR.eventMinSeconds, RUN_DIRECTOR.eventMaxSeconds) *
+        eventScale(state.elapsed),
+    );
   }
 
   private pickEndlessEvent(stars: number, elapsed: number): RunEventId {
@@ -154,21 +185,46 @@ export class RunDirectorSystem implements GameSystem {
   }
 }
 
+/**
+ * Pacing, not shuffling. As the run goes the quiet beats between events get
+ * shorter and the events themselves get longer, so every tension/release cycle
+ * peaks higher than the one before it instead of all reading the same.
+ */
+function paceProgress(elapsed: number): number {
+  return clamp01(elapsed / RUN_DIRECTOR.paceRampSeconds);
+}
+
+function recoveryScale(elapsed: number): number {
+  return 1 - (1 - RUN_DIRECTOR.minRecoveryScale) * paceProgress(elapsed);
+}
+
+function eventScale(elapsed: number): number {
+  return 1 + (RUN_DIRECTOR.maxEventScale - 1) * paceProgress(elapsed);
+}
+
 function buildOpeningBeats(): Beat[] {
-  const beats: Beat[] = [{ event: 'cruise', seconds: randomRange(9.5, 13) }];
+  // The scripted opening: a quiet stretch long enough for the teacher car to
+  // arrive and the player to bank their first near-miss before any event.
+  const beats: Beat[] = [{ event: 'cruise', seconds: RUN_DIRECTOR.graceSeconds }];
   const early = shuffled(EARLY_EVENTS).slice(0, 3);
   const late = shuffled(OPENING_LATE_EVENTS).slice(0, 4);
 
+  // Recovery shrinks beat by beat through the opening, so the run is audibly
+  // winding up well before the endless section takes over.
+  let recovery = 7.2;
+
   for (const event of early) {
     beats.push({ event, seconds: durationForEvent(event, false) });
-    beats.push({ event: 'cruise', seconds: randomRange(4.5, 7.2) });
+    beats.push({ event: 'cruise', seconds: randomRange(recovery * 0.62, recovery) });
+    recovery = Math.max(3.4, recovery - 0.55);
   }
 
   let previous: RunEventId = early[early.length - 1] ?? 'cruise';
   for (let event of late) {
     if (event === previous) event = event === 'coinRush' ? 'construction' : 'coinRush';
     beats.push({ event, seconds: durationForEvent(event, true) });
-    beats.push({ event: 'cruise', seconds: randomRange(4.8, 7.5) });
+    beats.push({ event: 'cruise', seconds: randomRange(recovery * 0.6, recovery) });
+    recovery = Math.max(2.8, recovery - 0.6);
     previous = event;
   }
 

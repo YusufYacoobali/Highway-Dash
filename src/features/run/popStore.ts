@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { RunEventId } from '@/engine/types';
+import type { GateKind, RunEventId } from '@/engine/types';
 import { palette } from '@/ui/theme';
 
 export interface Pop {
@@ -46,7 +46,7 @@ export function praiseForCombo(combo: number): { text: string; size: number } {
   return { text: 'CLOSE ONE!', size: 27 };
 }
 
-export function pushNearMissPop(combo: number, _stars: number): void {
+export function pushNearMissPop(combo: number): void {
   const { text, size } = praiseForCombo(combo);
   const color = combo >= 10 ? palette.cyanIce : palette.gold;
   usePopStore.getState().push(text, color, size);
@@ -65,6 +65,10 @@ export function pushRamPop(smashCount: number, grace: boolean): void {
   else push('GET OUT THE WAY!', palette.cyanIce, 32);
 }
 
+export function pushShookOffPop(): void {
+  usePopStore.getState().push('SHOOK THEM OFF!', palette.greenSoft, 36);
+}
+
 export function pushWantedPop(stars: number): void {
   const { push } = usePopStore.getState();
   push(stars >= 5 ? 'MAX HEAT!' : `WANTED ${stars}★`, palette.redHot, stars >= 4 ? 34 : 28);
@@ -74,18 +78,47 @@ export function pushNewBestPop(): void {
   usePopStore.getState().push('NEW BEST! KEEP GOING!', palette.greenSoft, 36);
 }
 
-export function pushEventPop(event: RunEventId): void {
+/** A scrape is survivable, so the callout sells the cost, not the disaster. */
+export function pushSideswipePop(multiplier: number): void {
   const { push } = usePopStore.getState();
-  const callout: Record<RunEventId, { text: string; color: string; size: number }> = {
-    cruise: { text: 'BREATHE...', color: palette.white, size: 24 },
-    coinRush: { text: 'COIN RUSH!', color: palette.gold, size: 34 },
-    construction: { text: 'LANES CLOSING!', color: palette.gold, size: 32 },
-    tunnel: { text: 'INTO THE TUNNEL!', color: palette.cyanIce, size: 32 },
-    nitroRush: { text: 'NITRO FRENZY!', color: palette.cyanIce, size: 36 },
-    police: { text: 'COPS ON YOU!', color: palette.redHot, size: 36 },
-    roadblock: { text: 'ROADBLOCK!', color: palette.redHot, size: 38 },
-    laneSqueeze: { text: 'ROAD NARROWS — 3 LANES!', color: palette.orange, size: 34 },
-  };
-  const item = callout[event];
-  push(item.text, item.color, item.size);
+  if (multiplier > 2) push(`SCRAPED! CHAIN DOWN TO x${multiplier.toFixed(1)}`, palette.orange, 31);
+  else push('SCRAPED! PAINT DAMAGE', palette.orange, 29);
+}
+
+export function pushDraftPop(chain: number): void {
+  const { push } = usePopStore.getState();
+  if (chain >= 6) push(`SLIPSTREAM x${chain}! GLUED ON!`, palette.cyanIce, 34);
+  else if (chain >= 3) push(`SLIPSTREAM x${chain}!`, palette.cyanIce, 32);
+  else push('SLIPSTREAM! TUCK IN!', palette.cyanIce, 30);
+}
+
+export function pushGatePop(risky: boolean, kind: GateKind): void {
+  const { push } = usePopStore.getState();
+  if (!risky) {
+    push('PLAYED IT SAFE', palette.greenSoft, 27);
+    return;
+  }
+  if (kind === 'drift') push('DRIFT MODE! HOLD ON!', '#C45CFF', 37);
+  else push('DOUBLE OR NOTHING!', palette.gold, 37);
+}
+
+/**
+ * Only the events the player has to *do* something about get a callout. Coin
+ * runs, tunnels and boost windows announce themselves perfectly well by being
+ * visible through the windscreen.
+ */
+const EVENT_WARNINGS: Partial<Record<RunEventId, { text: string; color: string; size: number }>> = {
+  police: { text: 'COPS ON YOU!', color: palette.redHot, size: 36 },
+  roadblock: { text: 'ROADBLOCK!', color: palette.redHot, size: 38 },
+  laneSqueeze: { text: 'ROAD NARROWS!', color: palette.orange, size: 34 },
+};
+
+export function isEventWarning(event: RunEventId): boolean {
+  return EVENT_WARNINGS[event] !== undefined;
+}
+
+export function pushEventPop(event: RunEventId): void {
+  const item = EVENT_WARNINGS[event];
+  if (!item) return;
+  usePopStore.getState().push(item.text, item.color, item.size);
 }

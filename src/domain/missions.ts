@@ -27,8 +27,9 @@ export const MISSION_POOL: readonly MissionTemplate[] = [
   { id: 'near60', title: 'Bank 60 near-misses', metric: 'nearMisses', goal: 60, reward: { coins: 750 } },
   { id: 'stars4', title: 'Reach 4 wanted stars', metric: 'wantedPeak', goal: 4, reward: { gems: 15 } },
   { id: 'stars5', title: 'Max out the wanted meter', metric: 'wantedPeak', goal: 5, reward: { gems: 25 } },
-  { id: 'dist3k', title: 'Drive 3,000 m total', metric: 'distance', goal: 3000, reward: { crates: 1 } },
-  { id: 'dist8k', title: 'Drive 8,000 m total', metric: 'distance', goal: 8000, reward: { coins: 900 } },
+  // Goals stay in metres — only the copy speaks kilometres.
+  { id: 'dist3k', title: 'Drive 3 km total', metric: 'distance', goal: 3000, reward: { crates: 1 } },
+  { id: 'dist8k', title: 'Drive 8 km total', metric: 'distance', goal: 8000, reward: { coins: 900 } },
   { id: 'coins500', title: 'Collect 500 coins', metric: 'coins', goal: 500, reward: { gems: 10 } },
   { id: 'runs5', title: 'Finish 5 runs', metric: 'runs', goal: 5, reward: { coins: 400 } },
   { id: 'speed260', title: 'Hit 260 km/h', metric: 'topSpeed', goal: 260, reward: { gems: 12 } },

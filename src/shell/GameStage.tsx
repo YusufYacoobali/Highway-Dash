@@ -7,9 +7,11 @@ import {
   View,
 } from 'react-native';
 
+import { dayKey } from '@/domain/calendar';
 import { findCar, type CarDefinition } from '@/domain/cars';
 import { describeCrateReward, type ShopBundle } from '@/domain/economy';
 import type { RunResult } from '@/domain/runResult';
+import { modifierForDay, type ModifierTone, type RunModifier } from '@/domain/runModifier';
 import { totalUpgradeLevel, type UpgradeId } from '@/domain/upgrades';
 import type { EngineEvents, Telemetry } from '@/engine/types';
 import { CrashScreen } from '@/features/crash/CrashScreen';
@@ -17,10 +19,15 @@ import { GarageScreen } from '@/features/garage/GarageScreen';
 import { MenuScreen } from '@/features/menu/MenuScreen';
 import { MissionsScreen } from '@/features/missions/MissionsScreen';
 import {
+  isEventWarning,
+  pushDraftPop,
   pushEventPop,
+  pushGatePop,
   pushNearMissPop,
   pushNewBestPop,
   pushRamPop,
+  pushShookOffPop,
+  pushSideswipePop,
   pushWantedPop,
   usePopStore,
 } from '@/features/run/popStore';
@@ -44,6 +51,15 @@ import { playerSnapshot } from './playerSnapshot';
 const NITRO_TOUCH_ZONE_WIDTH = 132;
 const NITRO_TOUCH_ZONE_HEIGHT = 178;
 
+/** The domain layer names a tone; the composition root resolves the colour. */
+const MODIFIER_TONE_COLORS: Record<ModifierTone, string> = {
+  neutral: palette.white,
+  gold: palette.gold,
+  red: palette.redHot,
+  cyan: palette.cyanIce,
+  green: palette.greenSoft,
+};
+
 /** Persistent 3D surface + React overlay composition root. */
 export const GameStage: React.FC = () => {
   const { feedback, engagement } = useServices();
@@ -58,8 +74,11 @@ export const GameStage: React.FC = () => {
 
   const selectedCarId = useProfileStore((s) => s.selectedCarId);
   const upgrades = useProfileStore((s) => s.upgrades);
+  const today = useProfileStore((s) => s.daily.dayKey);
   const car = useMemo(() => findCar(selectedCarId), [selectedCarId]);
-  const tuning = useMemo(() => runTuningFor(car, upgrades), [car, upgrades]);
+  // Keyed off the persisted day so it rotates with the rest of the dailies.
+  const modifier = useMemo(() => modifierForDay(today || dayKey()), [today]);
+  const tuning = useMemo(() => runTuningFor(car, upgrades, modifier), [car, upgrades, modifier]);
 
   const runToken = useRunStore((s) => s.runToken);
   const beginRun = useRunStore((s) => s.beginRun);
@@ -70,7 +89,7 @@ export const GameStage: React.FC = () => {
 
   const startRun = useCallback(() => {
     feedback.play('tap');
-    runBestTarget.current = useProfileStore.getState().bestDistance;
+    runBestTarget.current = useProfileStore.getState().bestScore;
     announcedBest.current = false;
     steeringTouchId.current = null;
     resetTelemetry();
@@ -112,21 +131,13 @@ export const GameStage: React.FC = () => {
     [bankRun, feedback, navigate],
   );
 
-  const handleQuitRun = useCallback(() => {
-    steeringTouchId.current = null;
-    feedback.play('tap');
-    const result = surface.current?.retireRun();
-    if (result) bankRun(result);
-    navigate('menu');
-  }, [bankRun, feedback, navigate]);
-
   const handleTelemetry = useCallback(
     (snapshot: Telemetry) => {
       applyTelemetry(snapshot);
       if (
         !announcedBest.current &&
         runBestTarget.current > 0 &&
-        snapshot.distance > runBestTarget.current
+        snapshot.score > runBestTarget.current
       ) {
         announcedBest.current = true;
         feedback.play('reward');
@@ -137,9 +148,12 @@ export const GameStage: React.FC = () => {
   );
 
   const handleNearMiss = useCallback(
-    ({ combo, stars }: EngineEvents['nearMiss']) => {
+    ({ combo, closeCall }: EngineEvents['nearMiss']) => {
+      // Praise and buzz ride the same gate as the slow-mo, so the three land
+      // together as one beat instead of firing on every car in the next lane.
+      if (!closeCall) return;
       feedback.play('nearMiss');
-      pushNearMissPop(combo, stars);
+      pushNearMissPop(combo);
     },
     [feedback],
   );
@@ -152,6 +166,11 @@ export const GameStage: React.FC = () => {
     [feedback],
   );
 
+  const handleShookOff = useCallback(() => {
+    feedback.play('reward');
+    pushShookOffPop();
+  }, [feedback]);
+
   const handleCoinCollected = useCallback(() => feedback.play('coin'), [feedback]);
 
   const handleTrafficRammed = useCallback(
@@ -162,9 +181,34 @@ export const GameStage: React.FC = () => {
     [feedback],
   );
 
+  const handleSideswiped = useCallback(
+    ({ multiplier }: EngineEvents['sideswiped']) => {
+      feedback.play('ram');
+      pushSideswipePop(multiplier);
+    },
+    [feedback],
+  );
+
+  const handleDrafted = useCallback(
+    ({ chain }: EngineEvents['drafted']) => {
+      feedback.play('star');
+      pushDraftPop(chain);
+    },
+    [feedback],
+  );
+
+  const handleGateChosen = useCallback(
+    ({ risky, kind }: EngineEvents['gateChosen']) => {
+      feedback.play(risky ? 'reward' : 'tap');
+      pushGatePop(risky, kind);
+    },
+    [feedback],
+  );
+
   const handleEventStarted = useCallback(
     ({ event }: EngineEvents['eventStarted']) => {
-      if (event !== 'cruise') feedback.play('event');
+      if (!isEventWarning(event)) return;
+      feedback.play('event');
       pushEventPop(event);
     },
     [feedback],
@@ -241,8 +285,12 @@ export const GameStage: React.FC = () => {
         onTelemetry={handleTelemetry}
         onNearMiss={handleNearMiss}
         onStarGained={handleStarGained}
+        onShookOff={handleShookOff}
         onCoinCollected={handleCoinCollected}
         onTrafficRammed={handleTrafficRammed}
+        onSideswiped={handleSideswiped}
+        onDrafted={handleDrafted}
+        onGateChosen={handleGateChosen}
         onEventStarted={handleEventStarted}
         onCrash={handleCrash}
         handleRef={surface}
@@ -250,10 +298,10 @@ export const GameStage: React.FC = () => {
 
       <ScreenOverlay
         screen={screen}
+        modifier={modifier}
         onPlay={startRun}
         goTo={goTo}
         onNitro={handleNitro}
-        onQuitRun={handleQuitRun}
       />
     </View>
   );
@@ -261,18 +309,18 @@ export const GameStage: React.FC = () => {
 
 interface ScreenOverlayProps {
   screen: ScreenId;
+  modifier: RunModifier;
   onPlay(): void;
   goTo(target: ScreenId): () => void;
   onNitro(): void;
-  onQuitRun(): void;
 }
 
 const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
   screen,
+  modifier,
   onPlay,
   goTo,
   onNitro,
-  onQuitRun,
 }) => {
   const { feedback, commerce } = useServices();
   const profile = useProfileStore();
@@ -344,6 +392,8 @@ const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
           coins={profile.coins}
           gems={profile.gems}
           claimableMissions={claimableMissions}
+          modifier={modifier}
+          modifierColor={MODIFIER_TONE_COLORS[modifier.tone]}
           onPlay={onPlay}
           onGarage={goTo('garage')}
           onMissions={goTo('missions')}
@@ -351,13 +401,13 @@ const ScreenOverlay: React.FC<ScreenOverlayProps> = ({
       );
 
     case 'run':
-      return <RunHud onQuit={onQuitRun} onNitro={onNitro} />;
+      return <RunHud onNitro={onNitro} />;
 
     case 'crash':
       return summary ? (
         <CrashScreen
           summary={summary}
-          bestDistance={profile.bestDistance}
+          bestScore={profile.bestScore}
           carName={findCar(profile.selectedCarId).name}
           seasonXp={profile.season.xp}
           onReplay={onPlay}

@@ -14,12 +14,16 @@ import { BASE_TUNING, type RunTuning } from '@/domain/tuning';
 import {
   ATTRACT_SPEED,
   CAMERA,
+  CONTACT,
+  DRAFT,
+  NEAR_MISS,
   NITRO,
   ROAD_WIDTH,
   SCORING,
   SLOW_MO,
   STEER_LIMIT,
 } from './config';
+import { RiskGateSystem } from './systems/RiskGateSystem';
 import { CameraSystem } from './systems/CameraSystem';
 import { CrashSequence } from './systems/CrashSequence';
 import { HeatSystem } from './systems/HeatSystem';
@@ -38,6 +42,7 @@ import type {
   EngineEvents,
   EngineMode,
   GameSystem,
+  GateKind,
   RunState,
   SystemContext,
   VehicleObject,
@@ -61,17 +66,37 @@ function createRunState(mode: EngineMode): RunState {
     speed: mode === 'run' ? IDLE_RUN_SPEED : ATTRACT_SPEED,
     steerTarget: 0,
     x: 0,
+    steerVelocity: 0,
     distance: 0,
+    score: 0,
+    multiplier: SCORING.multiplierMin,
+    bestMultiplier: SCORING.multiplierMin,
     coins: 0,
     combo: 0,
     bestCombo: 0,
     comboTimer: 0,
     nearMisses: 0,
+    sideswipes: 0,
     stars: 0,
     starProgress: 0,
     wantedPeak: 0,
     secondsSinceNearMiss: 0,
     secondsAtMaxStars: 0,
+    bustThreat: 0,
+    policeProximity: 0,
+    contactImmunityRemaining: 0,
+    driftModeRemaining: 0,
+    drafting: false,
+    draftCharge: 0,
+    draftSurgeRemaining: 0,
+    drafts: 0,
+    gateApproaching: false,
+    gateRiskSide: 0,
+    gateKind: 'double',
+    gateBoostRemaining: 0,
+    gatesTaken: 0,
+    cameraNudge: 0,
+    nearMissFlashRemaining: 0,
     topSpeedKmh: 120,
     nitroRemaining: 0,
     nitroCooldown: 0,
@@ -82,6 +107,7 @@ function createRunState(mode: EngineMode): RunState {
     cameraShake: 0,
     slowMoRemaining: 0,
     slowMoScale: 1,
+    slowMoCooldown: 0,
     event: 'cruise',
     eventVariant: 0,
     eventRemaining: 0,
@@ -143,6 +169,7 @@ export class GameEngine {
 
     this.heatSystem = new HeatSystem({
       onStarGained: (stars) => this.events.emit('starGained', { stars }),
+      onShookOff: (stars) => this.events.emit('shookOff', { stars }),
     });
     this.crashSequence = new CrashSequence(this.camera);
     this.telemetry = new TelemetryPublisher((snapshot) => this.events.emit('telemetry', snapshot));
@@ -152,19 +179,28 @@ export class GameEngine {
       onThemeChanged: (theme) => this.events.emit('themeChanged', { theme }),
     });
     const worldTheme = new WorldThemeSystem(this.scene);
-    const police = new PoliceSystem(this.scene, this.workshop);
+    const police = new PoliceSystem(this.scene, this.workshop, {
+      onBust: () => this.crash('BUSTED'),
+    });
     const speedFx = new SpeedFxSystem(this.scene, this.player);
+    const gates = new RiskGateSystem(this.scene, {
+      onGateApproaching: (riskSide, kind) =>
+        this.events.emit('gateApproaching', { riskSide, kind }),
+      onGateChosen: (risky, kind) => this.handleGateChosen(risky, kind),
+    });
 
     this.systems = [
       director,
+      gates,
       new PlayerSystem(),
       new WorldScrollSystem(bands),
       new RoadLayoutSystem(road.dashColumns),
       worldTheme,
       new TrafficSystem(this.scene, this.workshop, {
-        onNearMiss: () => this.handleNearMiss(),
+        onNearMiss: (side, gap) => this.handleNearMiss(side, gap),
         onImpact: () => this.crash('SMASHED'),
         onRam: (grace) => this.handleRam(grace),
+        onSideswipe: (severity, side) => this.handleSideswipe(severity, side),
       }),
       new PickupSystem(this.scene, {
         onCoinCollected: (value) => {
@@ -268,9 +304,15 @@ export class GameEngine {
     const slowScale = this.state.slowMoRemaining > 0 ? this.state.slowMoScale : 1;
     const dt = wallDt * slowScale;
     this.state.slowMoRemaining = Math.max(0, this.state.slowMoRemaining - wallDt);
+    this.state.slowMoCooldown = Math.max(0, this.state.slowMoCooldown - wallDt);
     if (this.state.slowMoRemaining <= 0) this.state.slowMoScale = 1;
 
     this.state.elapsed += wallDt;
+    // The immunity window runs on wall clock so slow-motion cannot stretch it.
+    this.state.contactImmunityRemaining = Math.max(
+      0,
+      this.state.contactImmunityRemaining - wallDt,
+    );
     this.advanceSpeed(dt);
     this.state.distance += this.state.speed * dt;
     this.state.topSpeedKmh = Math.max(
@@ -279,6 +321,8 @@ export class GameEngine {
     );
 
     this.runSystems(dt, this.state.speed * dt);
+    // After the systems, because TrafficSystem decides `drafting` this frame.
+    if (this.state.mode === 'run') this.advanceDraft(dt);
     if (this.state.mode === 'run') this.telemetry.update(this.state, wallDt);
   }
 
@@ -329,7 +373,9 @@ export class GameEngine {
 
     const rampProgress = Math.min(1, state.elapsed / Math.max(60, tuning.rampSeconds));
     const cruise = tuning.baseSpeed + rampProgress * tuning.speedGain;
-    const target = state.nitroRemaining > 0 ? cruise * tuning.nitroMultiplier : cruise;
+    const surge = state.draftSurgeRemaining > 0 ? DRAFT.surgeMultiplier : 1;
+    const target =
+      (state.nitroRemaining > 0 ? cruise * tuning.nitroMultiplier : cruise) * surge;
 
     state.speed = damp(state.speed, target, SPEED_RESPONSE, dt);
   }
@@ -354,12 +400,66 @@ export class GameEngine {
     if (shouldReport) this.events.emit('crashed', this.buildResult());
   }
 
-  private handleNearMiss(): void {
-    this.scoreSystem.registerNearMiss(this.state);
-    this.heatSystem.registerNearMiss(this.state);
-    this.state.slowMoRemaining = SLOW_MO.nearMissSeconds;
-    this.state.slowMoScale = this.state.combo >= 5 ? SLOW_MO.hugeNearMissScale : SLOW_MO.nearMissScale;
-    this.events.emit('nearMiss', { combo: this.state.combo, stars: this.state.stars });
+  private handleNearMiss(side: number, gap: number): void {
+    const { state } = this;
+    this.scoreSystem.registerNearMiss(state);
+    this.heatSystem.registerNearMiss(state);
+
+    // Every pass inside the scoring window still scores and still kicks the
+    // camera — but the kick scales with how close it actually was, so a car
+    // two lanes over barely registers.
+    const closeness = clamp(1 - gap / SLOW_MO.grazeGap, 0, 1);
+    state.cameraNudge = side * NEAR_MISS.cameraNudge * (0.3 + closeness * 0.7);
+
+    // Only a genuine squeeze earns the cinematic beat, and only once per
+    // cooldown, so a wall of traffic cannot strobe the whole run.
+    const closeCall = gap < SLOW_MO.grazeGap && state.slowMoCooldown <= 0;
+    if (closeCall) {
+      state.slowMoCooldown = SLOW_MO.cooldownSeconds;
+      state.slowMoRemaining = SLOW_MO.nearMissSeconds;
+      state.slowMoScale =
+        gap < SLOW_MO.hugeGap ? SLOW_MO.hugeNearMissScale : SLOW_MO.nearMissScale;
+      state.nearMissFlashRemaining = NEAR_MISS.flashSeconds;
+    }
+
+    this.events.emit('nearMiss', {
+      combo: state.combo,
+      stars: state.stars,
+      closeCall,
+      gap,
+    });
+  }
+
+  private handleGateChosen(risky: boolean, kind: GateKind): void {
+    this.scoreSystem.registerGate(this.state, risky);
+    if (risky) this.state.cameraShake = Math.max(this.state.cameraShake, 1.1);
+    this.events.emit('gateChosen', { risky, kind, multiplier: this.state.multiplier });
+  }
+
+  /**
+   * Slipstreaming. Holding station in a car's wake charges a meter that pays
+   * out in chain fuel and a short surge — which turns traffic from a pure
+   * hazard into something worth getting close to on purpose.
+   */
+  private advanceDraft(dt: number): void {
+    const { state } = this;
+    state.draftSurgeRemaining = Math.max(0, state.draftSurgeRemaining - dt);
+
+    if (!state.started || state.crashed) return;
+
+    if (!state.drafting) {
+      state.draftCharge = Math.max(0, state.draftCharge - DRAFT.decayRate * dt);
+      return;
+    }
+
+    state.draftCharge += dt;
+    state.nitroCooldown = Math.max(0, state.nitroCooldown - DRAFT.nitroCooldownCut * dt);
+    if (state.draftCharge < DRAFT.chargeSeconds) return;
+
+    state.draftCharge = 0;
+    state.draftSurgeRemaining = DRAFT.surgeSeconds;
+    this.scoreSystem.registerDraft(state, DRAFT.coins, DRAFT.multiplierBonus);
+    this.events.emit('drafted', { chain: state.drafts, multiplier: state.multiplier });
   }
 
   private handleRam(grace: boolean): void {
@@ -374,6 +474,30 @@ export class GameEngine {
     });
   }
 
+  /**
+   * A graze along the flank. It costs speed, most of the chain and control of
+   * the line — but not the run. Dying to a wing mirror at 400 km/h is the
+   * single least defensible death in this genre.
+   */
+  private handleSideswipe(severity: number, side: number): void {
+    const { state } = this;
+
+    state.speed *= CONTACT.sideswipeSpeedKeep;
+    state.steerVelocity += side * CONTACT.sideswipeKnock * (0.6 + severity);
+    // Only the first graze opens the window; later ones inside it do not
+    // extend it, so a pile-up cannot be ridden out indefinitely.
+    if (state.contactImmunityRemaining <= 0) {
+      state.contactImmunityRemaining = CONTACT.sideswipeImmunitySeconds;
+    }
+    state.cameraShake = Math.max(state.cameraShake, CONTACT.sideswipeShake);
+    state.slowMoRemaining = CONTACT.sideswipeSlowMoSeconds;
+    state.slowMoScale = CONTACT.sideswipeSlowMoScale;
+    this.scoreSystem.registerSideswipe(state);
+
+    this.events.emit('sideswiped', { severity, multiplier: state.multiplier });
+  }
+
+
   private crash(cause: RunResult['cause']): void {
     if (this.state.crashed || this.state.mode !== 'run') return;
     this.pendingCause = cause;
@@ -386,10 +510,13 @@ export class GameEngine {
     const { state } = this;
     return {
       cause: this.pendingCause,
+      score: Math.round(state.score),
       distance: Math.round(state.distance * SCORING.distanceScale),
       coins: state.coins,
       nearMisses: state.nearMisses,
+      sideswipes: state.sideswipes,
       bestCombo: state.bestCombo,
+      bestMultiplier: Math.round(state.bestMultiplier * 10) / 10,
       topSpeed: state.topSpeedKmh,
       wantedPeak: state.wantedPeak,
       duration: state.elapsed,

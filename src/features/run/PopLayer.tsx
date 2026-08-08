@@ -4,7 +4,11 @@ import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { AppText } from '@/ui/components';
 import { usePopStore, type Pop } from './popStore';
 
-const POP_DURATION = 950;
+/**
+ * Pops are rare now — only genuine close calls and event warnings raise one —
+ * so each gets long enough on screen to actually be read.
+ */
+const POP_DURATION = 1250;
 
 /** Renders the transient near-miss praise. Purely decorative, never interactive. */
 export const PopLayer: React.FC = () => {
@@ -40,7 +44,7 @@ const PopText: React.FC<{ pop: Pop }> = ({ pop }) => {
           left: `${pop.x}%`,
           top: pop.y,
           opacity: progress.interpolate({
-            inputRange: [0, 0.2, 0.72, 1],
+            inputRange: [0, 0.14, 0.78, 1],
             outputRange: [0, 1, 1, 0],
           }),
           transform: [
